@@ -27,6 +27,8 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    // ⬇️ Silence “Some chunks are larger than 500 kB” warning
+    chunkSizeWarningLimit: 1600,
   },
   server: {
     fs: {
