@@ -1,71 +1,93 @@
-import express, { type Request, Response, NextFunction } from "express";
+// server/index.ts
+import express, {
+  type Request,
+  type Response,
+  type NextFunction,
+} from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { db } from "./db"; // ensures DB is initialized (Neon + Drizzle)
 
 const app = express();
-app.use(express.json());
+
+// Basic hardening / parsing
+app.set("trust proxy", 1);
+app.disable("x-powered-by");
+app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: false }));
 
+/**
+ * Slim API request logger (only logs /api/*). Keeps body preview short.
+ */
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
+  let capturedJsonResponse: unknown;
 
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
+  const originalResJson = res.json.bind(res);
+  res.json = ((bodyJson: unknown, ...args: any[]) => {
     capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
+    return originalResJson(bodyJson, ...args);
+  }) as any;
 
   res.on("finish", () => {
-    const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "…";
-      }
-
-      log(logLine);
+    if (!path.startsWith("/api")) return;
+    const ms = Date.now() - start;
+    let line = `${req.method} ${path} ${res.statusCode} in ${ms}ms`;
+    if (capturedJsonResponse !== undefined) {
+      const preview = JSON.stringify(capturedJsonResponse);
+      line += ` :: ${preview}`;
     }
+    if (line.length > 80) line = line.slice(0, 79) + "…";
+    log(line);
   });
 
   next();
 });
 
+/**
+ * Lightweight health endpoint. If DB init fails on boot, import above would throw.
+ * You can expand this to run a tiny query if you like.
+ */
+app.get("/api/health", (_req: Request, res: Response) => {
+  // touch db so TS doesn’t tree-shake import in some setups
+  void db;
+  res.json({ status: "ok" });
+});
+
 (async () => {
+  // Register your API routes (this should return a Node/HTTP server)
   const server = await registerRoutes(app);
 
+  // Centralized error handler (send safe message to client)
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
-
     res.status(status).json({ message });
-    throw err;
+    // Also surface in logs for debugging
+    try {
+      // eslint-disable-next-line no-console
+      console.error(err);
+    } catch {}
   });
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
+  // In dev, mount Vite after all API routes; in prod, serve built client
   if (app.get("env") === "development") {
     await setupVite(app, server);
   } else {
     serveStatic(app);
   }
 
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || '5000', 10);
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
-    log(`serving on port ${port}`);
-  });
+  // Always use PORT provided by env (Replit uses this). Default 5000 locally.
+  const port = Number(process.env.PORT || 5000);
+  server.listen(
+    {
+      port,
+      host: "0.0.0.0",
+      reusePort: true,
+    },
+    () => {
+      log(`serving on port ${port}`);
+    },
+  );
 })();

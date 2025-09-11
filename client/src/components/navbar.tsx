@@ -1,15 +1,15 @@
-import { useState } from 'react';
-import { Link, useLocation } from 'wouter';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { useAuthStore } from '@/lib/auth';
-import { useCartStore } from '@/lib/cart';
-import { Search, ShoppingCart, Store, User, Menu, X } from 'lucide-react';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { useAuthStore } from "@/lib/auth";
+import { useCartStore } from "@/lib/cart";
+import { Search, ShoppingCart, Store, Menu } from "lucide-react";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 export function Navbar() {
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const { user, isAuthenticated, logout } = useAuthStore();
   const { getTotalItems, openCart } = useCartStore();
   const [, setLocation] = useLocation();
@@ -21,31 +21,31 @@ export function Navbar() {
     }
   };
 
-  const handleCartClick = () => {
-    openCart();
-  };
+  const handleCartClick = () => openCart();
 
+  // ✅ Updated path for "Become Vendor"
   const navigation = [
-    { name: 'Home', href: '/' },
-    { name: 'Categories', href: '/categories' },
-    { name: 'Become Vendor', href: '/vendor-register' },
-    { name: 'Support', href: '/support' },
+    { name: "Home", href: "/" },
+    { name: "Categories", href: "/categories" },
+    { name: "Become Vendor", href: "/become-vendor" },
+    { name: "Support", href: "/support" },
   ];
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto px-4">
         <div className="flex h-16 items-center justify-between">
-          {/* Logo and Navigation */}
+          {/* Logo + Desktop Nav */}
           <div className="flex items-center space-x-4">
             <Link href="/" className="flex items-center space-x-2">
               <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
                 <Store className="h-4 w-4 text-primary-foreground" />
               </div>
-              <span className="text-xl font-bold text-foreground">MarketPlace Pro</span>
+              <span className="text-xl font-bold text-foreground">
+                MarketPlace Pro
+              </span>
             </Link>
 
-            {/* Desktop Navigation */}
             <nav className="hidden md:flex space-x-6">
               {navigation.map((item) => (
                 <Link
@@ -59,7 +59,7 @@ export function Navbar() {
             </nav>
           </div>
 
-          {/* Search Bar */}
+          {/* Search (desktop) */}
           <div className="hidden md:block flex-1 max-w-lg mx-8">
             <form onSubmit={handleSearch} className="relative">
               <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
@@ -74,9 +74,9 @@ export function Navbar() {
             </form>
           </div>
 
-          {/* User Actions */}
+          {/* Actions */}
           <div className="flex items-center space-x-4">
-            {/* Cart Button */}
+            {/* Cart */}
             <Button
               variant="ghost"
               size="sm"
@@ -96,26 +96,35 @@ export function Navbar() {
               )}
             </Button>
 
-            {/* Authentication */}
+            {/* Auth */}
             {isAuthenticated ? (
               <div className="flex items-center space-x-2">
                 <span className="hidden md:inline text-sm text-muted-foreground">
                   Welcome, {user?.firstName}
                 </span>
-                {user?.role === 'vendor' && (
+
+                {user?.role === "vendor" && (
                   <Button variant="outline" size="sm" asChild>
-                    <Link href="/vendor-dashboard" data-testid="link-vendor-dashboard">
+                    <Link
+                      href="/vendor-dashboard"
+                      data-testid="link-vendor-dashboard"
+                    >
                       Dashboard
                     </Link>
                   </Button>
                 )}
-                {user?.role === 'admin' && (
+
+                {user?.role === "admin" && (
                   <Button variant="outline" size="sm" asChild>
-                    <Link href="/admin-dashboard" data-testid="link-admin-dashboard">
+                    <Link
+                      href="/admin-dashboard"
+                      data-testid="link-admin-dashboard"
+                    >
                       Admin
                     </Link>
                   </Button>
                 )}
+
                 <Button
                   variant="outline"
                   size="sm"
@@ -131,7 +140,7 @@ export function Navbar() {
               </Button>
             )}
 
-            {/* Mobile Menu */}
+            {/* Mobile menu */}
             <Sheet>
               <SheetTrigger asChild>
                 <Button variant="ghost" size="sm" className="md:hidden">
@@ -149,8 +158,8 @@ export function Navbar() {
                       {item.name}
                     </Link>
                   ))}
-                  
-                  {/* Mobile Search */}
+
+                  {/* Mobile search */}
                   <form onSubmit={handleSearch} className="relative mt-6">
                     <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Input

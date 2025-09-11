@@ -1,6 +1,7 @@
-import { Pool, neonConfig } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-serverless';
+// server/db.ts
+import { Pool, neonConfig } from "@neondatabase/serverless";
 import ws from "ws";
+import { drizzle } from "drizzle-orm/neon-serverless";
 import * as schema from "@shared/schema";
 
 neonConfig.webSocketConstructor = ws;
@@ -11,5 +12,14 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-export const db = drizzle({ client: pool, schema });
+// Create the Neon pool (this HAS .query)
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+// ✅ Export a PG-like client that ALWAYS has .query(...)
+export const client = {
+  query: (text: string, params?: any[]) =>
+    pool.query(text as any, params as any),
+};
+
+// ✅ Export Drizzle (typed ORM — optional for now)
+export const db = drizzle(pool, { schema });
