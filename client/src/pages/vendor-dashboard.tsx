@@ -1,162 +1,303 @@
-import { useState } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Badge } from '@/components/ui/badge';
-import { useAuthStore } from '@/lib/auth';
-import { useToast } from '@/hooks/use-toast';
-import { apiRequest, queryClient } from '@/lib/queryClient';
-import { insertProductSchema } from '@shared/schema';
-import { 
-  Plus, 
-  Package, 
-  Clock, 
-  DollarSign, 
-  Star, 
-  Edit, 
-  Trash2,
-  BarChart3 
-} from 'lucide-react';
+// client/src/pages/vendor-dashboard.tsx
+import { useEffect, useMemo, useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 
-const productFormSchema = insertProductSchema.extend({
-  price: z.string().min(1, 'Price is required'),
-  stock: z.string().min(1, 'Stock is required'),
-});
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
+
+import { useAuthStore } from "@/lib/auth";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { insertProductSchema } from "@shared/schema";
+import {
+  Plus,
+  Package,
+  Clock,
+  DollarSign,
+  Star,
+  Edit,
+  Trash2,
+  Store,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+} from "lucide-react";
+
+/** ---------- Types ---------- */
+type Vendor = {
+  id: string;
+  userId: string;
+  storeName: string;
+  isApproved: boolean;
+  createdAt: string;
+};
+
+type Order = {
+  id: string;
+  vendorId: string;
+  customerId: string;
+  total: number | string;
+  status: string;
+  createdAt: string;
+};
+
+type Product = {
+  id: string;
+  vendorId: string;
+  name?: string;
+  title?: string;
+  price: number | string;
+  stock?: number | string;
+  imageUrl?: string;
+  description?: string;
+  isActive?: boolean;
+  createdAt?: string;
+};
+
+/** ---------- Form Schema (UI strings -> server numbers) ---------- */
+const productFormSchema = insertProductSchema
+  .extend({
+    // Accept strings from inputs, we’ll convert before POST
+    price: z.string().min(1, "Price is required"),
+    stock: z.string().min(1, "Stock is required"),
+  })
+  // vendorId & categoryId come from code, not user typing
+  .partial({ vendorId: true, categoryId: true });
 
 type ProductForm = z.infer<typeof productFormSchema>;
 
 export default function VendorDashboard() {
   const [isProductDialogOpen, setIsProductDialogOpen] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<any>(null);
-  const { user } = useAuthStore();
+  const { user, isAuthenticated } = useAuthStore();
   const { toast } = useToast();
 
-  // Get vendor info
-  const { data: vendor } = useQuery<any>({
-    queryKey: ['/api/vendors/user', user?.id],
+  /** ---------- Auth hint ---------- */
+  useEffect(() => {
+    if (!isAuthenticated) {
+      toast({
+        title: "Please sign in",
+        description: "You must sign in to access the vendor dashboard.",
+        variant: "destructive",
+      });
+    }
+  }, [isAuthenticated, toast]);
+
+  /** ---------- Data: vendor, products, orders ---------- */
+  // IMPORTANT: our query keys are actual URLs your fetcher will GET
+  const vendorKey = user?.id ? [`/api/vendors/user/${user.id}`] : [];
+
+  const {
+    data: vendor,
+    isLoading: loadingVendor,
+    isError: vendorErr,
+  } = useQuery<Vendor>({
+    queryKey: vendorKey,
     enabled: !!user?.id,
   });
 
-  // Get vendor products
-  const { data: products = [] } = useQuery<any[]>({
-    queryKey: ['/api/products', { vendorId: vendor?.id }],
+  const productsKey = useMemo(
+    () => (vendor?.id ? [`/api/products?vendorId=${vendor.id}`] : []),
+    [vendor?.id],
+  );
+
+  const { data: products = [], isLoading: loadingProducts } = useQuery<
+    Product[]
+  >({
+    queryKey: productsKey,
     enabled: !!vendor?.id,
   });
 
-  // Get vendor orders
-  const { data: orders = [] } = useQuery<any[]>({
-    queryKey: ['/api/orders/vendor', vendor?.id],
+  const ordersKey = vendor?.id ? [`/api/orders/vendor/${vendor.id}`] : [];
+
+  const { data: orders = [] } = useQuery<Order[]>({
+    queryKey: ordersKey,
     enabled: !!vendor?.id,
   });
 
+  /** ---------- Form ---------- */
   const form = useForm<ProductForm>({
     resolver: zodResolver(productFormSchema),
     defaultValues: {
-      vendorId: vendor?.id || '',
-      categoryId: '',
-      name: '',
-      description: '',
-      price: '',
-      stock: '',
-      imageUrl: '',
+      vendorId: "", // set after vendor loads
+      categoryId: "",
+      name: "",
+      description: "",
+      price: "",
+      stock: "",
+      imageUrl: "",
     },
   });
 
+  // When vendor loads, inject vendorId into the form defaults
+  useEffect(() => {
+    if (vendor?.id) {
+      form.reset({
+        vendorId: vendor.id,
+        categoryId: "",
+        name: "",
+        description: "",
+        price: "",
+        stock: "",
+        imageUrl: "",
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vendor?.id]);
+
+  /** ---------- Mutations ---------- */
   const createProductMutation = useMutation({
-    mutationFn: async (data: any) => {
-      const response = await apiRequest('POST', '/api/products', data);
-      return response.json();
+    mutationFn: async (data: ProductForm) => {
+      const payload = {
+        ...data,
+        vendorId: vendor!.id,
+        price: Number(data.price),
+        stock: Number(data.stock),
+      };
+      await apiRequest("POST", "/api/products", payload);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/products'] });
+      queryClient.invalidateQueries({ queryKey: productsKey });
       setIsProductDialogOpen(false);
-      form.reset();
-      toast({
-        title: 'Success',
-        description: 'Product created successfully',
+      form.reset({
+        vendorId: vendor?.id ?? "",
+        categoryId: "",
+        name: "",
+        description: "",
+        price: "",
+        stock: "",
+        imageUrl: "",
       });
+      toast({ title: "Product created successfully" });
     },
-    onError: () => {
+    onError: (e: any) => {
       toast({
-        title: 'Error',
-        description: 'Failed to create product',
-        variant: 'destructive',
+        title: "Failed to create product",
+        description: e?.message || "Please check required fields.",
+        variant: "destructive",
       });
     },
   });
 
   const deleteProductMutation = useMutation({
     mutationFn: async (productId: string) => {
-      await apiRequest('DELETE', `/api/products/${productId}`);
+      await apiRequest("DELETE", `/api/products/${productId}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/products'] });
-      toast({
-        title: 'Success',
-        description: 'Product deleted successfully',
-      });
+      queryClient.invalidateQueries({ queryKey: productsKey });
+      toast({ title: "Product deleted successfully" });
     },
     onError: () => {
       toast({
-        title: 'Error',
-        description: 'Failed to delete product',
-        variant: 'destructive',
+        title: "Failed to delete product",
+        variant: "destructive",
       });
     },
   });
 
-  const onSubmit = (data: ProductForm) => {
-    const productData = {
-      ...data,
-      vendorId: vendor?.id,
-      price: parseFloat(data.price),
-      stock: parseInt(data.stock),
-    };
-
-    createProductMutation.mutate(productData);
-  };
-
-  const handleDeleteProduct = (productId: string) => {
-    if (confirm('Are you sure you want to delete this product?')) {
-      deleteProductMutation.mutate(productId);
-    }
-  };
-
-  // Calculate stats
+  /** ---------- Derived stats ---------- */
   const totalProducts = products.length;
-  const pendingOrders = orders.filter((order: any) => order.status === 'pending').length;
-  const monthlyRevenue = orders
-    .filter((order: any) => new Date(order.createdAt).getMonth() === new Date().getMonth())
-    .reduce((sum: number, order: any) => sum + parseFloat(order.total), 0);
 
+  const pendingOrders = orders.filter((o) => o.status === "pending").length;
+
+  const now = new Date();
+  const monthlyRevenue = orders
+    .filter((o) => {
+      const d = new Date(o.createdAt);
+      return (
+        d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
+      );
+    })
+    .reduce((sum, o) => sum + Number(o.total || 0), 0);
+
+  const canManage = !!vendor?.isApproved;
+
+  /** ---------- UI ---------- */
   return (
     <div className="container mx-auto px-4 py-8">
-      {/* Dashboard Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2" data-testid="text-dashboard-title">
-          Vendor Dashboard
+      {/* Header */}
+      <div className="mb-6">
+        <h1
+          className="text-3xl font-bold flex items-center gap-2"
+          data-testid="text-dashboard-title"
+        >
+          <Store className="h-7 w-7" /> Vendor Dashboard
         </h1>
         <p className="text-muted-foreground">
           Manage your products, orders, and store performance
         </p>
       </div>
 
-      {/* Stats Cards */}
+      {/* Vendor Status */}
+      <Card className="mb-8">
+        <CardContent className="p-6 flex items-center justify-between">
+          <div>
+            <p className="text-sm text-muted-foreground">Store</p>
+            <p className="text-lg font-semibold">{vendor?.storeName ?? "—"}</p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-muted-foreground">Status</span>
+            {loadingVendor ? (
+              <Badge variant="secondary" className="flex items-center gap-1">
+                <Loader2 className="h-4 w-4 animate-spin" /> Checking…
+              </Badge>
+            ) : vendorErr || !vendor ? (
+              <Badge variant="destructive" className="flex items-center gap-1">
+                <XCircle className="h-4 w-4" /> Not a vendor yet
+              </Badge>
+            ) : vendor.isApproved ? (
+              <Badge variant="secondary" className="flex items-center gap-1">
+                <CheckCircle2 className="h-4 w-4" /> Approved
+              </Badge>
+            ) : (
+              <Badge variant="destructive" className="flex items-center gap-1">
+                <XCircle className="h-4 w-4" /> Pending approval
+              </Badge>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Total Products</p>
-                <p className="text-2xl font-bold" data-testid="text-total-products">
+                <p
+                  className="text-2xl font-bold"
+                  data-testid="text-total-products"
+                >
                   {totalProducts}
                 </p>
               </div>
@@ -172,7 +313,10 @@ export default function VendorDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Pending Orders</p>
-                <p className="text-2xl font-bold" data-testid="text-pending-orders">
+                <p
+                  className="text-2xl font-bold"
+                  data-testid="text-pending-orders"
+                >
                   {pendingOrders}
                 </p>
               </div>
@@ -188,7 +332,10 @@ export default function VendorDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Monthly Revenue</p>
-                <p className="text-2xl font-bold" data-testid="text-monthly-revenue">
+                <p
+                  className="text-2xl font-bold"
+                  data-testid="text-monthly-revenue"
+                >
                   ${monthlyRevenue.toFixed(2)}
                 </p>
               </div>
@@ -204,7 +351,10 @@ export default function VendorDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Store Rating</p>
-                <p className="text-2xl font-bold" data-testid="text-store-rating">
+                <p
+                  className="text-2xl font-bold"
+                  data-testid="text-store-rating"
+                >
                   4.8
                 </p>
               </div>
@@ -216,11 +366,14 @@ export default function VendorDashboard() {
         </Card>
       </div>
 
-      {/* Action Buttons */}
+      {/* Actions */}
       <div className="flex flex-wrap gap-4 mb-8">
-        <Dialog open={isProductDialogOpen} onOpenChange={setIsProductDialogOpen}>
+        <Dialog
+          open={isProductDialogOpen}
+          onOpenChange={setIsProductDialogOpen}
+        >
           <DialogTrigger asChild>
-            <Button data-testid="button-add-product">
+            <Button data-testid="button-add-product" disabled={!canManage}>
               <Plus className="mr-2 h-4 w-4" />
               Add New Product
             </Button>
@@ -229,8 +382,30 @@ export default function VendorDashboard() {
             <DialogHeader>
               <DialogTitle>Add New Product</DialogTitle>
             </DialogHeader>
+
+            {!canManage && (
+              <div className="mb-4">
+                <Badge variant="destructive">
+                  Your store is pending admin approval
+                </Badge>
+              </div>
+            )}
+
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <form
+                onSubmit={form.handleSubmit((data) => {
+                  if (!canManage) {
+                    return toast({
+                      title: "Not approved yet",
+                      description:
+                        "An admin must approve your store before adding products.",
+                      variant: "destructive",
+                    });
+                  }
+                  createProductMutation.mutate(data);
+                })}
+                className="space-y-4"
+              >
                 <FormField
                   control={form.control}
                   name="name"
@@ -238,13 +413,17 @@ export default function VendorDashboard() {
                     <FormItem>
                       <FormLabel>Product Name</FormLabel>
                       <FormControl>
-                        <Input placeholder="Enter product name" {...field} data-testid="input-product-name" />
+                        <Input
+                          placeholder="Enter product name"
+                          {...field}
+                          data-testid="input-product-name"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-                
+
                 <FormField
                   control={form.control}
                   name="description"
@@ -252,9 +431,9 @@ export default function VendorDashboard() {
                     <FormItem>
                       <FormLabel>Description</FormLabel>
                       <FormControl>
-                        <Textarea 
-                          placeholder="Enter product description" 
-                          {...field} 
+                        <Textarea
+                          placeholder="Enter product description"
+                          {...field}
                           data-testid="input-product-description"
                         />
                       </FormControl>
@@ -271,11 +450,11 @@ export default function VendorDashboard() {
                       <FormItem>
                         <FormLabel>Price ($)</FormLabel>
                         <FormControl>
-                          <Input 
-                            type="number" 
-                            step="0.01" 
-                            placeholder="0.00" 
-                            {...field} 
+                          <Input
+                            type="number"
+                            step="0.01"
+                            placeholder="0.00"
+                            {...field}
                             data-testid="input-product-price"
                           />
                         </FormControl>
@@ -283,7 +462,7 @@ export default function VendorDashboard() {
                       </FormItem>
                     )}
                   />
-                  
+
                   <FormField
                     control={form.control}
                     name="stock"
@@ -291,10 +470,10 @@ export default function VendorDashboard() {
                       <FormItem>
                         <FormLabel>Stock Quantity</FormLabel>
                         <FormControl>
-                          <Input 
-                            type="number" 
-                            placeholder="0" 
-                            {...field} 
+                          <Input
+                            type="number"
+                            placeholder="0"
+                            {...field}
                             data-testid="input-product-stock"
                           />
                         </FormControl>
@@ -311,9 +490,9 @@ export default function VendorDashboard() {
                     <FormItem>
                       <FormLabel>Image URL</FormLabel>
                       <FormControl>
-                        <Input 
-                          placeholder="https://example.com/image.jpg" 
-                          {...field} 
+                        <Input
+                          placeholder="https://example.com/image.jpg"
+                          {...field}
                           data-testid="input-product-image"
                         />
                       </FormControl>
@@ -322,7 +501,7 @@ export default function VendorDashboard() {
                   )}
                 />
 
-                <div className="flex justify-end space-x-4">
+                <div className="flex justify-end gap-3">
                   <Button
                     type="button"
                     variant="outline"
@@ -331,12 +510,14 @@ export default function VendorDashboard() {
                   >
                     Cancel
                   </Button>
-                  <Button 
-                    type="submit" 
-                    disabled={createProductMutation.isPending}
+                  <Button
+                    type="submit"
+                    disabled={createProductMutation.isPending || !canManage}
                     data-testid="button-create-product"
                   >
-                    {createProductMutation.isPending ? 'Creating...' : 'Create Product'}
+                    {createProductMutation.isPending
+                      ? "Creating..."
+                      : "Create Product"}
                   </Button>
                 </div>
               </form>
@@ -345,7 +526,7 @@ export default function VendorDashboard() {
         </Dialog>
 
         <Button variant="outline" data-testid="button-analytics">
-          <BarChart3 className="mr-2 h-4 w-4" />
+          {/* Placeholder for future analytics modal/page */}
           View Analytics
         </Button>
       </div>
@@ -356,65 +537,116 @@ export default function VendorDashboard() {
           <CardTitle>Your Products</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Product</TableHead>
-                  <TableHead>Price</TableHead>
-                  <TableHead>Stock</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {products.map((product: any) => (
-                  <TableRow key={product.id} data-testid={`row-product-${product.id}`}>
-                    <TableCell>
-                      <div className="flex items-center space-x-3">
-                        <img
-                          src={product.imageUrl}
-                          alt={product.name}
-                          className="w-12 h-12 object-cover rounded-lg"
-                        />
-                        <div>
-                          <p className="font-medium">{product.name}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {product.description.substring(0, 50)}...
-                          </p>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      ${parseFloat(product.price).toFixed(2)}
-                    </TableCell>
-                    <TableCell>{product.stock}</TableCell>
-                    <TableCell>
-                      <Badge variant={product.isActive ? "secondary" : "destructive"}>
-                        {product.isActive ? 'Active' : 'Inactive'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex space-x-2">
-                        <Button variant="ghost" size="sm" data-testid={`button-edit-${product.id}`}>
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteProduct(product.id)}
-                          className="text-destructive hover:text-destructive"
-                          data-testid={`button-delete-${product.id}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
+          {loadingProducts ? (
+            <div className="text-sm text-muted-foreground">
+              Loading products…
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Product</TableHead>
+                    <TableHead>Price</TableHead>
+                    <TableHead>Stock</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+                </TableHeader>
+                <TableBody>
+                  {products.map((product: Product) => {
+                    const displayName =
+                      product.name ?? product.title ?? "(no name)";
+                    const price = Number(product.price ?? 0);
+                    const stock = product.stock ?? 0;
+                    const img = product.imageUrl || "";
+                    const desc = product.description
+                      ? String(product.description)
+                      : "";
+
+                    return (
+                      <TableRow
+                        key={product.id}
+                        data-testid={`row-product-${product.id}`}
+                      >
+                        <TableCell>
+                          <div className="flex items-center space-x-3">
+                            {img ? (
+                              <img
+                                src={img}
+                                alt={displayName}
+                                className="w-12 h-12 object-cover rounded-lg"
+                              />
+                            ) : (
+                              <div className="w-12 h-12 rounded-lg bg-muted" />
+                            )}
+                            <div>
+                              <p className="font-medium">{displayName}</p>
+                              {desc && (
+                                <p className="text-sm text-muted-foreground">
+                                  {desc.length > 50
+                                    ? `${desc.slice(0, 50)}…`
+                                    : desc}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          ${price.toFixed(2)}
+                        </TableCell>
+                        <TableCell>{String(stock)}</TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              product.isActive ? "secondary" : "destructive"
+                            }
+                          >
+                            {product.isActive ? "Active" : "Inactive"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              data-testid={`button-edit-${product.id}`}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                if (confirm("Delete this product?")) {
+                                  deleteProductMutation.mutate(product.id);
+                                }
+                              }}
+                              className="text-destructive hover:text-destructive"
+                              data-testid={`button-delete-${product.id}`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+
+                  {!products.length && !loadingProducts && (
+                    <TableRow>
+                      <TableCell
+                        colSpan={5}
+                        className="text-sm text-muted-foreground"
+                      >
+                        No products yet.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -436,20 +668,26 @@ export default function VendorDashboard() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {orders.slice(0, 10).map((order: any) => (
-                  <TableRow key={order.id} data-testid={`row-order-${order.id}`}>
+                {orders.slice(0, 10).map((order) => (
+                  <TableRow
+                    key={order.id}
+                    data-testid={`row-order-${order.id}`}
+                  >
                     <TableCell className="font-mono text-sm">
                       #{order.id.substring(0, 8)}
                     </TableCell>
                     <TableCell>{order.customerId}</TableCell>
                     <TableCell className="font-medium">
-                      ${parseFloat(order.total).toFixed(2)}
+                      ${Number(order.total || 0).toFixed(2)}
                     </TableCell>
                     <TableCell>
                       <Badge
                         variant={
-                          order.status === 'delivered' ? 'secondary' :
-                          order.status === 'pending' ? 'destructive' : 'default'
+                          order.status === "delivered"
+                            ? "secondary"
+                            : order.status === "pending"
+                              ? "destructive"
+                              : "default"
                         }
                       >
                         {order.status}
@@ -460,6 +698,17 @@ export default function VendorDashboard() {
                     </TableCell>
                   </TableRow>
                 ))}
+
+                {!orders.length && (
+                  <TableRow>
+                    <TableCell
+                      colSpan={5}
+                      className="text-sm text-muted-foreground"
+                    >
+                      No orders yet.
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </div>

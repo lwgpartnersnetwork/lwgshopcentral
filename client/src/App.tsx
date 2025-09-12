@@ -78,6 +78,8 @@ function Router() {
         </>
       </Route>
 
+      <Route path="/support" component={Support} />
+
       {/* 🚀 Newly added routes */}
       <Route path="/categories">
         <>
