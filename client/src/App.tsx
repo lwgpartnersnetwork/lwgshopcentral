@@ -5,6 +5,7 @@ import { queryClient } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Navbar } from "@/components/navbar";
+import Footer from "@/components/footer";
 import { CartSidebar } from "@/components/cart-sidebar";
 
 // Pages
@@ -23,7 +24,6 @@ import NotFound from "@/pages/not-found";
 import { useEffect } from "react";
 function RouteProbe({ tag }: { tag: string }) {
   useEffect(() => {
-    // Open the browser DevTools Console to see these messages
     console.log(`[route] ${tag} mounted`);
   }, [tag]);
   return null;
@@ -78,9 +78,6 @@ function Router() {
         </>
       </Route>
 
-      <Route path="/support" component={Support} />
-
-      {/* 🚀 Newly added routes */}
       <Route path="/categories">
         <>
           <RouteProbe tag="categories" />
@@ -122,6 +119,7 @@ export default function App() {
           <main>
             <Router />
           </main>
+          <Footer />
           <CartSidebar />
         </div>
         <Toaster />

@@ -197,7 +197,7 @@ ${form.message || "(write here)"}${diag}`;
               Include diagnostics (URL, browser, time, API health)
             </label>
 
-            {/* Button row (only the main button here) */}
+            {/* Main action (only button row) */}
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-2">
               <Button
                 onClick={openEmail}
@@ -209,7 +209,7 @@ ${form.message || "(write here)"}${diag}`;
               </Button>
             </div>
 
-            {/* Contact detail block UNDER the button (mobile-friendly) */}
+            {/* Contact details under the button for better mobile layout */}
             <div className="mt-2 space-y-1 text-sm">
               <div className="flex items-center gap-2">
                 <Mail className="h-4 w-4 text-muted-foreground" />

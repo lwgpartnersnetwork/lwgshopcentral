@@ -7,14 +7,16 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Package, Tag, ArrowLeft, Search } from "lucide-react";
 
-/** Backend shapes (kept loose so it won't crash if fields differ) */
+/* ----------------------------- Types ----------------------------- */
 type Category = {
-  id: string;
+  id: string;            // normalized to string in code (API may return number)
   name?: string;
   title?: string;
   slug?: string;
   createdAt?: string;
 };
+
+type ApiCategory = Omit<Category, "id"> & { id: string | number };
 
 type Product = {
   id: string;
@@ -27,7 +29,7 @@ type Product = {
   createdAt?: string;
 };
 
-/** Small image helper */
+/* --------------------------- Image helper ------------------------ */
 function Img({ src, alt }: { src?: string; alt: string }) {
   if (!src) return <div className="w-full h-40 bg-muted rounded-lg" />;
   return (
@@ -42,41 +44,50 @@ function Img({ src, alt }: { src?: string; alt: string }) {
 
 export default function Categories() {
   const [search, setSearch] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<Category | null>(
-    null,
-  );
+  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
 
-  /** 1) Load all categories */
+  /* 1) Load categories */
   const {
-    data: categories = [],
+    data: rawCategories = [],
     isLoading: loadingCats,
     isError: catsError,
-  } = useQuery<Category[]>({
+  } = useQuery<ApiCategory[]>({
     queryKey: ["/api/categories"],
   });
 
-  /** 2) If a category is chosen, load its products */
-  const catId = selectedCategory?.id;
+  // Normalize ids to string so UI is stable
+  const categories: Category[] = useMemo(
+    () =>
+      rawCategories.map((c) => ({
+        ...c,
+        id: String(c.id),
+      })),
+    [rawCategories]
+  );
+
+  /* 2) Load products for a selected category */
+  const catId = selectedCategory?.id ?? null;
+
   const {
     data: products = [],
     isLoading: loadingProducts,
     isError: prodError,
   } = useQuery<Product[]>({
-    queryKey: catId ? [`/api/products?categoryId=${catId}`] : ["products:skip"],
+    queryKey: ["/api/products", catId ? { categoryId: catId } : {}],
     enabled: !!catId,
   });
 
-  /** 3) Filter categories by search */
+  /* 3) Filter categories by search */
   const filteredCategories = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return categories;
     return categories.filter((c) => {
-      const label = c.name ?? c.title ?? "";
-      return label.toLowerCase().includes(q);
+      const label = (c.name ?? c.title ?? "").toLowerCase();
+      return label.includes(q);
     });
   }, [categories, search]);
 
-  /** 4) UI */
+  /* ------------------------------ UI ----------------------------- */
   return (
     <div className="container mx-auto px-4 py-8">
       {/* Header */}
@@ -92,7 +103,6 @@ export default function Categories() {
           </p>
         </div>
 
-        {/* Back button when viewing products */}
         {selectedCategory && (
           <Button
             variant="outline"
@@ -105,7 +115,7 @@ export default function Categories() {
         )}
       </div>
 
-      {/* Search (only on category list view) */}
+      {/* Search bar (only on category list view) */}
       {!selectedCategory && (
         <div className="mb-6 max-w-lg">
           <div className="relative">
@@ -121,7 +131,7 @@ export default function Categories() {
         </div>
       )}
 
-      {/* Errors */}
+      {/* Error banners */}
       {catsError && !selectedCategory && (
         <Card className="mb-6">
           <CardContent className="py-6">
@@ -153,7 +163,7 @@ export default function Categories() {
         </div>
       )}
 
-      {/* 5) Category list */}
+      {/* Category list */}
       {!selectedCategory && !loadingCats && (
         <>
           {!filteredCategories.length ? (
@@ -197,7 +207,7 @@ export default function Categories() {
         </>
       )}
 
-      {/* 6) Products for the selected category */}
+      {/* Products for selected category */}
       {selectedCategory && !loadingProducts && (
         <>
           {!products.length ? (
@@ -205,9 +215,7 @@ export default function Categories() {
               <CardContent className="py-8">
                 <p className="text-muted-foreground">
                   No products found in “
-                  {selectedCategory.name ??
-                    selectedCategory.title ??
-                    "Category"}
+                  {selectedCategory.name ?? selectedCategory.title ?? "Category"}
                   ”.
                 </p>
               </CardContent>
