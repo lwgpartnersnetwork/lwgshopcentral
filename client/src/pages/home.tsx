@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Laptop,
   Shirt,
-  Home as HomeIcon, // ✅ correct Lucide export
+  Home as HomeIcon,
   Gamepad2,
   Book,
   Baby,
@@ -23,7 +23,7 @@ type ApiCategory = {
   id: number | string;
   name: string;
   slug: string;
-  icon: string; // e.g. "bolt", "shirt", "home", "football", "book", "baby"
+  icon: string; // "bolt" | "shirt" | "home" | "football" | "book" | "baby" | ...
   description?: string;
 };
 
@@ -151,7 +151,7 @@ export default function Home() {
             guaranteed, fast shipping, best prices.
           </p>
 
-          {/* ✅ Now navigates to /categories */}
+          {/* Go to categories */}
           <Button
             size="lg"
             className="bg-background text-foreground hover:bg-background/90"
@@ -164,11 +164,21 @@ export default function Home() {
             </Link>
           </Button>
 
-          {/* LWG blue logo under hero (optional) */}
+          {/* LWG blue logo under hero with fallback to yellow */}
           <img
             src={site.logoBlue}
             alt="LWG Partners Network"
             className="mx-auto mt-8 h-10 md:h-12 w-auto"
+            loading="lazy"
+            decoding="async"
+            onError={(e) => {
+              const img = e.currentTarget;
+              if (img.src !== window.location.origin + site.logoYellow) {
+                img.src = site.logoYellow;
+              } else {
+                img.style.display = "none";
+              }
+            }}
           />
         </div>
       </section>
@@ -230,8 +240,6 @@ export default function Home() {
                   Clear Filter
                 </Button>
               )}
-
-              {/* View All goes to full categories page */}
               <Button variant="ghost" asChild data-testid="button-view-all">
                 <Link href="/categories">View All</Link>
               </Button>
@@ -285,7 +293,6 @@ export default function Home() {
             worldwide.
           </p>
           <Button size="lg" asChild data-testid="button-become-vendor">
-            {/* ✅ matches your route file name */}
             <Link href="/become-vendor">
               Become a Vendor
               <ArrowRight className="ml-2 h-4 w-4" />

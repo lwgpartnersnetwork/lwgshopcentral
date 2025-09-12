@@ -8,22 +8,34 @@ export function Footer() {
 
   return (
     <footer className="mt-16 border-t bg-background">
-      {/* top section */}
+      {/* Top section */}
       <div className="container mx-auto px-4 py-10 grid gap-8 md:grid-cols-4">
-        {/* brand + tagline */}
+        {/* Brand + tagline */}
         <div className="space-y-3">
           <Link href="/" className="inline-flex items-center gap-3">
             <img
               src={site.logoBlue}
               alt={`${site.shortName} logo`}
+              loading="lazy"
+              decoding="async"
               className="h-10 w-auto"
+              onError={(e) => {
+                // Fallback to yellow if the blue logo 404s (e.g., hashed filename mismatch)
+                const img = e.currentTarget;
+                if (img.src !== window.location.origin + site.logoYellow) {
+                  img.src = site.logoYellow;
+                } else {
+                  // if even the fallback fails, hide the broken image
+                  img.style.display = "none";
+                }
+              }}
             />
             <span className="text-lg font-bold">{site.name}</span>
           </Link>
           <p className="text-sm text-muted-foreground">{site.tagline}</p>
         </div>
 
-        {/* explore links */}
+        {/* Explore links */}
         <nav className="space-y-2">
           <h3 className="font-semibold">Explore</h3>
           <ul className="space-y-2 text-sm">
@@ -42,7 +54,7 @@ export function Footer() {
           </ul>
         </nav>
 
-        {/* contact */}
+        {/* Contact */}
         <div className="space-y-2">
           <h3 className="font-semibold">Contact</h3>
           <div className="text-sm space-y-2">
@@ -50,15 +62,18 @@ export function Footer() {
               href={`mailto:${site.supportEmail}`}
               className="inline-flex items-center gap-2 underline break-all"
             >
-              <Mail className="h-4 w-4" /> {site.supportEmail}
+              <Mail className="h-4 w-4" />
+              {site.supportEmail}
             </a>
+
             {site.supportPhone && (
               <div className="flex flex-col">
                 <a
                   href={`tel:${site.supportPhone}`}
                   className="inline-flex items-center gap-2 underline"
                 >
-                  <Phone className="h-4 w-4" /> {site.supportPhone}
+                  <Phone className="h-4 w-4" />
+                  {site.supportPhone}
                 </a>
                 {wa && (
                   <a
@@ -66,6 +81,7 @@ export function Footer() {
                     target="_blank"
                     rel="noopener noreferrer"
                     className="underline mt-1"
+                    aria-label="Chat with us on WhatsApp"
                   >
                     WhatsApp chat
                   </a>
@@ -75,7 +91,7 @@ export function Footer() {
           </div>
         </div>
 
-        {/* vendor CTA */}
+        {/* Vendor CTA */}
         <div className="space-y-3">
           <h3 className="font-semibold">Vendor?</h3>
           <p className="text-sm text-muted-foreground">
@@ -90,12 +106,9 @@ export function Footer() {
         </div>
       </div>
 
-      {/* bottom bar */}
+      {/* Bottom bar */}
       <div className="border-t">
-        <div
-          className="container mx-auto px-4 py-6 text-xs text-muted-foreground
-                        flex flex-col md:flex-row items-center justify-between gap-3"
-        >
+        <div className="container mx-auto px-4 py-6 text-xs text-muted-foreground flex flex-col md:flex-row items-center justify-between gap-3">
           <p>
             © {year} {site.name}. All rights reserved.
           </p>
