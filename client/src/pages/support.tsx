@@ -8,7 +8,15 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { site } from "@/config/site";
-import { HeartPulse, Mail, LifeBuoy, Home, Tag, Store } from "lucide-react";
+import {
+  HeartPulse,
+  Mail,
+  LifeBuoy,
+  Home,
+  Tag,
+  Store,
+  Phone,
+} from "lucide-react";
 
 type Health = { status: string } | undefined;
 
@@ -55,7 +63,10 @@ ${form.message || "(write here)"}${diag}`;
     )}&body=${encodeURIComponent(body)}`;
   };
 
-  const canSend = form.name.trim() && form.email.trim() && form.message.trim();
+  const canSend =
+    form.name.trim().length > 0 &&
+    form.email.trim().length > 0 &&
+    form.message.trim().length > 0;
 
   const statusOk = health?.status === "ok";
 
@@ -186,7 +197,8 @@ ${form.message || "(write here)"}${diag}`;
               Include diagnostics (URL, browser, time, API health)
             </label>
 
-            <div className="flex items-center gap-3 pt-2">
+            {/* Button row (only the main button here) */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-2">
               <Button
                 onClick={openEmail}
                 disabled={!canSend}
@@ -195,23 +207,42 @@ ${form.message || "(write here)"}${diag}`;
                 <Mail className="h-4 w-4 mr-2" />
                 Email {site.shortName} Support
               </Button>
-              <Button
-                asChild
-                variant="outline"
-                size="sm"
-                data-testid="button-plain-mailto"
-              >
-                <a href={`mailto:${site.supportEmail}`}>
-                  <LifeBuoy className="h-4 w-4 mr-2" />
+            </div>
+
+            {/* Contact detail block UNDER the button (mobile-friendly) */}
+            <div className="mt-2 space-y-1 text-sm">
+              <div className="flex items-center gap-2">
+                <Mail className="h-4 w-4 text-muted-foreground" />
+                <a
+                  href={`mailto:${site.supportEmail}`}
+                  className="underline break-all"
+                >
                   {site.supportEmail}
                 </a>
-              </Button>
+              </div>
+              {site.supportPhone && (
+                <div className="flex items-center gap-2">
+                  <Phone className="h-4 w-4 text-muted-foreground" />
+                  <a href={`tel:${site.supportPhone}`} className="underline">
+                    {site.supportPhone}
+                  </a>
+                  <span className="text-muted-foreground">•</span>
+                  <a
+                    href={`https://wa.me/${site.supportPhone.replace(/\D/g, "")}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline"
+                  >
+                    WhatsApp
+                  </a>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Lightweight FAQ (native details/summary = no extra deps) */}
+      {/* Lightweight FAQ */}
       <Card>
         <CardHeader>
           <CardTitle>FAQ</CardTitle>

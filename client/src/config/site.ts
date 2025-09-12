@@ -5,6 +5,8 @@ export type SiteConfig = {
   shortName: string;
   tagline: string;
   supportEmail: string;
+  /** Optional phone / WhatsApp contact shown on Support page */
+  supportPhone?: string;
   logoBlue: string;
   logoYellow: string;
   favicon16: string;
@@ -16,7 +18,10 @@ export const site: SiteConfig = {
   shortName: "LWG",
   tagline:
     "Trusted vendors. Real value. Shop from thousands of verified vendors worldwide.",
-  supportEmail: "lwgpartnersnetwork@gmail.com",
+
+  // ✅ Official support contacts
+  supportEmail: "info@lwgpartnersnetwork.com",
+  supportPhone: "+23272146015",
 
   // public/ assets (served from the site root)
   logoBlue: "/lwg-logo-blue.png",
