@@ -19,6 +19,7 @@ import AdminDashboard from "@/pages/admin-dashboard";
 import Categories from "@/pages/categories";
 import Support from "@/pages/support";
 import BecomeVendor from "@/pages/become-vendor";
+import Checkout from "@/pages/checkout"; // ✅ added
 import NotFound from "@/pages/not-found";
 
 // --- Debug helper so we can see which route rendered ---
@@ -97,6 +98,14 @@ function Router() {
         <>
           <RouteProbe tag="support" />
           <Support />
+        </>
+      </Route>
+
+      {/* ✅ Checkout route */}
+      <Route path="/checkout">
+        <>
+          <RouteProbe tag="checkout" />
+          <Checkout />
         </>
       </Route>
 
