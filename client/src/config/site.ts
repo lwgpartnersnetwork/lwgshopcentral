@@ -19,15 +19,17 @@ export const site: SiteConfig = {
   tagline:
     "Trusted vendors. Real value. Shop from thousands of verified vendors worldwide.",
 
-  // ✅ Official support contacts
+  // Support contacts
   supportEmail: "info@lwgpartnersnetwork.com",
   supportPhone: "+23272146015",
 
-  // public/ assets (served from the site root)
-  logoBlue: "/lwg-logo-blue.png",
-  logoYellow: "/lwg-logo-yellow.png",
-  favicon16: "/favicon-16x16.png",
-  favicon32: "/favicon-32x32.png",
+  // Public assets in /client/public (must match filenames exactly)
+  logoBlue: "/lwg-logo-blue.png_17576414729992.png",
+  logoYellow: "/lwg-logo-yellow.png_1757641586275.png",
+
+  // Use your single favicon file for both link tags
+  favicon16: "/lwg-favicon.png_1757641803765.png",
+  favicon32: "/lwg-favicon.png_1757641803765.png",
 };
 
 export default site;
