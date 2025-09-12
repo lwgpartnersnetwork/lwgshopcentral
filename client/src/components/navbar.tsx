@@ -5,9 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useAuthStore } from "@/lib/auth";
 import { useCartStore } from "@/lib/cart";
-import { Search, ShoppingCart, Menu } from "lucide-react";
+import { Search, ShoppingCart, Menu, Store } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { site } from "@/config/site";
+import site from "@/config/site"; // just for site.name text
 
 export function Navbar() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -35,26 +35,10 @@ export function Navbar() {
         <div className="flex h-16 items-center justify-between">
           {/* Logo + Desktop Nav */}
           <div className="flex items-center gap-4">
-            <Link
-              href="/"
-              className="flex items-center space-x-3"
-              aria-label={site.name}
-            >
-              {/* Blue on light, Yellow on dark */}
-              <img
-                src={site.logoBlue}
-                alt={`${site.name} logo`}
-                className="h-8 w-auto block dark:hidden"
-                loading="eager"
-                decoding="async"
-              />
-              <img
-                src={site.logoYellow}
-                alt={`${site.name} logo (dark)`}
-                className="h-8 w-auto hidden dark:block"
-                loading="eager"
-                decoding="async"
-              />
+            <Link href="/" className="flex items-center space-x-2">
+              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+                <Store className="h-4 w-4 text-primary-foreground" />
+              </div>
               <span className="text-xl font-bold text-foreground">
                 {site.name}
               </span>
@@ -144,18 +128,10 @@ export function Navbar() {
                 </Button>
               </SheetTrigger>
               <SheetContent side="right" className="w-80">
-                <div className="flex items-center space-x-3">
-                  {/* Blue on light, Yellow on dark (mobile header) */}
-                  <img
-                    src={site.logoBlue}
-                    alt={`${site.name} logo`}
-                    className="h-8 w-auto block dark:hidden"
-                  />
-                  <img
-                    src={site.logoYellow}
-                    alt={`${site.name} logo (dark)`}
-                    className="h-8 w-auto hidden dark:block"
-                  />
+                <div className="flex items-center space-x-2">
+                  <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+                    <Store className="h-4 w-4 text-primary-foreground" />
+                  </div>
                   <span className="text-xl font-bold">{site.name}</span>
                 </div>
 
