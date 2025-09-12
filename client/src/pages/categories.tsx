@@ -1,8 +1,8 @@
 export default function Categories() {
   return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-4">Categories</h1>
-      <p>List of categories will go here.</p>
+    <div className="container mx-auto py-10">
+      <h1 className="text-2xl font-bold">Categories page — OK</h1>
+      <p>Build check</p>
     </div>
   );
 }
