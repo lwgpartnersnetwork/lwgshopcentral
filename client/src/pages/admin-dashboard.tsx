@@ -12,6 +12,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { site } from "@/config/site";
 import {
   Store,
   Users,
@@ -28,33 +29,54 @@ import {
   RefreshCw,
 } from "lucide-react";
 
-const SUPPORT_EMAIL = "lwgpartnersnetwork@gmail.com";
-
-// ---------- helpers ----------
+/* ---------------- helpers ---------------- */
 const toNumber = (v: unknown) => {
   const n = typeof v === "number" ? v : parseFloat(String(v ?? "0"));
   return Number.isFinite(n) ? n : 0;
 };
 
 const formatK = (n: number) => {
-  if (n >= 1000000) return `$${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1000) return `$${(n / 1000).toFixed(1)}K`;
   return `$${n.toFixed(2)}`;
 };
 
+/* ------------- Admin Dashboard ------------- */
 export default function AdminDashboard() {
   const { toast } = useToast();
 
-  // -------- data --------
+  /* ------- data ------- */
   const vendorsQuery = useQuery<any[]>({ queryKey: ["/api/vendors"] });
   const ordersQuery = useQuery<any[]>({ queryKey: ["/api/orders"] });
   const productsQuery = useQuery<any[]>({ queryKey: ["/api/products"] });
 
-  const vendors = vendorsQuery.data ?? [];
-  const orders = ordersQuery.data ?? [];
-  const products = productsQuery.data ?? [];
+  // Optional: some apps store applications in a separate endpoint.
+  // This query never throws; if the route doesn't exist, it returns [].
+  const vendorRequestsQuery = useQuery<any[]>({
+    queryKey: ["/api/vendor-requests"],
+    queryFn: async () => {
+      const res = await fetch("/api/vendor-requests", { credentials: "include" });
+      if (!res.ok) return []; // 404 or any error => ignore
+      return res.json();
+    },
+    retry: false,
+  });
 
-  // -------- mutations --------
+  const vendors = vendorsQuery.data ?? [];
+  const products = productsQuery.data ?? [];
+  const orders = ordersQuery.data ?? [];
+  const vendorRequests = vendorRequestsQuery.data ?? [];
+
+  // Merge vendor requests (if any) in as "pending vendors" without duping
+  const vendorIds = new Set(vendors.map((v: any) => String(v.id)));
+  const mergedVendors = [
+    ...vendors,
+    ...vendorRequests
+      .filter((r: any) => !vendorIds.has(String(r.id)))
+      .map((r: any) => ({ ...r, isApproved: false, __requestOnly: true })),
+  ];
+
+  /* ------- mutations ------- */
   const updateVendorApprovalMutation = useMutation({
     mutationFn: async ({
       vendorId,
@@ -63,16 +85,12 @@ export default function AdminDashboard() {
       vendorId: string;
       isApproved: boolean;
     }) => {
-      await apiRequest("PUT", `/api/vendors/${vendorId}/approval`, {
-        isApproved,
-      });
+      await apiRequest("PUT", `/api/vendors/${vendorId}/approval`, { isApproved });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
-      toast({
-        title: "Success",
-        description: "Vendor approval status updated",
-      });
+      queryClient.invalidateQueries({ queryKey: ["/api/vendor-requests"] });
+      toast({ title: "Success", description: "Vendor approval status updated" });
     },
     onError: () => {
       toast({
@@ -83,11 +101,10 @@ export default function AdminDashboard() {
     },
   });
 
-  // -------- handlers --------
+  /* ------- handlers ------- */
   const handleApproveVendor = (vendorId: string) => {
     updateVendorApprovalMutation.mutate({ vendorId, isApproved: true });
   };
-
   const handleRejectVendor = (vendorId: string) => {
     updateVendorApprovalMutation.mutate({ vendorId, isApproved: false });
   };
@@ -97,41 +114,38 @@ export default function AdminDashboard() {
     const body = encodeURIComponent(
       "Hello Support,\n\nI need help with: \n\n- Issue:\n- Steps to reproduce:\n- Expected vs Actual:\n\nThanks,"
     );
-    window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`;
+    window.location.href = `mailto:${site.supportEmail}?subject=${subject}&body=${body}`;
   };
 
   const refreshAll = () => {
     vendorsQuery.refetch();
     ordersQuery.refetch();
     productsQuery.refetch();
+    vendorRequestsQuery.refetch();
   };
 
-  // -------- stats --------
-  const totalVendors = vendors.length;
-  const totalCustomers = 48392; // placeholder until you have a real customers API
+  /* ------- stats ------- */
+  const totalVendors = mergedVendors.length;
+  const totalCustomers = 48392; // placeholder until a customers API exists
   const totalProducts = products.length;
 
-  // platform fee = 10% of each order.total (if present)
   const platformRevenueRaw = orders.reduce((sum: number, order: any) => {
     const total = toNumber(order?.total);
     return sum + total * 0.1;
   }, 0);
-
   const platformRevenueDisplay = formatK(platformRevenueRaw);
 
-  const pendingVendors = vendors.filter((v: any) => !v?.isApproved);
+  const pendingVendors = mergedVendors.filter((v: any) => !v?.isApproved);
   const todaysOrders =
     orders.filter(
       (o: any) =>
-        new Date(o?.createdAt ?? 0).toDateString() ===
-        new Date().toDateString()
+        new Date(o?.createdAt ?? 0).toDateString() === new Date().toDateString()
     ).length ?? 0;
 
-  // -------- ui helpers --------
+  /* ------- UI helpers ------- */
   const Loading = (
     <div className="text-sm text-muted-foreground py-6">Loading…</div>
   );
-
   const ErrorMsg = ({ msg }: { msg?: string }) => (
     <div className="text-sm text-destructive py-6">
       {msg || "Something went wrong."}
@@ -139,10 +153,10 @@ export default function AdminDashboard() {
   );
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="container mx-auto px-4 py-8 overflow-x-hidden">
       {/* Header */}
-      <div className="mb-8 flex items-start justify-between gap-4">
-        <div>
+      <div className="mb-8 flex items-start justify-between gap-3">
+        <div className="min-w-0">
           <h1 className="text-3xl font-bold mb-2" data-testid="text-admin-title">
             Admin Dashboard
           </h1>
@@ -151,18 +165,20 @@ export default function AdminDashboard() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={refreshAll}>
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Refresh
+        {/* Responsive controls: icon-only on small screens to avoid horizontal scroll */}
+        <div className="flex items-center gap-2 shrink-0">
+          <Button variant="ghost" size="sm" onClick={refreshAll} className="px-2 sm:px-3">
+            <RefreshCw className="h-4 w-4" />
+            <span className="sr-only sm:not-sr-only sm:ml-2">Refresh</span>
           </Button>
           <Button
             variant="outline"
             onClick={handleContactSupport}
             data-testid="button-contact-support"
+            className="px-2 sm:px-3"
           >
-            <Mail className="mr-2 h-4 w-4" />
-            Contact Support
+            <Mail className="h-4 w-4" />
+            <span className="sr-only md:not-sr-only md:ml-2">Contact Support</span>
           </Button>
         </div>
       </div>
@@ -171,8 +187,8 @@ export default function AdminDashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
         <Card>
           <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
                 <p className="text-sm text-muted-foreground">Total Vendors</p>
                 <p className="text-2xl font-bold" data-testid="text-total-vendors">
                   {totalVendors}
@@ -187,13 +203,10 @@ export default function AdminDashboard() {
 
         <Card>
           <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
                 <p className="text-sm text-muted-foreground">Total Customers</p>
-                <p
-                  className="text-2xl font-bold"
-                  data-testid="text-total-customers"
-                >
+                <p className="text-2xl font-bold" data-testid="text-total-customers">
                   {totalCustomers.toLocaleString()}
                 </p>
               </div>
@@ -206,13 +219,10 @@ export default function AdminDashboard() {
 
         <Card>
           <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
                 <p className="text-sm text-muted-foreground">Total Products</p>
-                <p
-                  className="text-2xl font-bold"
-                  data-testid="text-total-products"
-                >
+                <p className="text-2xl font-bold" data-testid="text-total-products">
                   {totalProducts.toLocaleString()}
                 </p>
               </div>
@@ -225,13 +235,10 @@ export default function AdminDashboard() {
 
         <Card>
           <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
                 <p className="text-sm text-muted-foreground">Platform Revenue</p>
-                <p
-                  className="text-2xl font-bold"
-                  data-testid="text-platform-revenue"
-                >
+                <p className="text-2xl font-bold" data-testid="text-platform-revenue">
                   {platformRevenueDisplay}
                 </p>
               </div>
@@ -245,11 +252,15 @@ export default function AdminDashboard() {
         {/* Support */}
         <Card>
           <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
+            {/* Stack on mobile to avoid horizontal overflow */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="min-w-0">
                 <p className="text-sm text-muted-foreground">Support Email</p>
-                <p className="text-lg font-medium" data-testid="text-support-email">
-                  {SUPPORT_EMAIL}
+                <p
+                  className="text-sm sm:text-base font-medium break-all"
+                  data-testid="text-support-email"
+                >
+                  {site.supportEmail}
                 </p>
               </div>
               <Button
@@ -257,9 +268,10 @@ export default function AdminDashboard() {
                 size="sm"
                 onClick={handleContactSupport}
                 data-testid="button-support-email"
+                className="self-start sm:self-auto px-2 sm:px-3"
               >
-                <Mail className="mr-2 h-4 w-4" />
-                Email
+                <Mail className="h-4 w-4" />
+                <span className="sr-only sm:not-sr-only sm:ml-2">Email</span>
               </Button>
             </div>
           </CardContent>
@@ -292,7 +304,7 @@ export default function AdminDashboard() {
             Loading
           ) : vendorsQuery.isError ? (
             <ErrorMsg msg={(vendorsQuery.error as any)?.message} />
-          ) : vendors.length === 0 ? (
+          ) : mergedVendors.length === 0 ? (
             <div className="text-sm text-muted-foreground py-6">
               No vendors yet.
             </div>
@@ -309,27 +321,25 @@ export default function AdminDashboard() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {vendors.map((vendor: any) => (
-                    <TableRow
-                      key={vendor.id}
-                      data-testid={`row-vendor-${vendor.id}`}
-                    >
+                  {mergedVendors.map((vendor: any) => (
+                    <TableRow key={vendor.id} data-testid={`row-vendor-${vendor.id}`}>
                       <TableCell>
                         <div className="flex items-center space-x-3">
                           <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
                             <Store className="h-5 w-5 text-primary" />
                           </div>
-                          <div>
-                            <p className="font-medium">{vendor.userId}</p>
+                          <div className="min-w-0">
+                            <p className="font-medium truncate max-w-[180px] sm:max-w-none">
+                              {vendor.userId || vendor.email || "Vendor"}
+                            </p>
                             <p className="text-sm text-muted-foreground">
                               Vendor ID: {String(vendor.id).slice(0, 8)}
+                              {vendor.__requestOnly && " • (request)"}
                             </p>
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="font-medium">
-                        {vendor.storeName}
-                      </TableCell>
+                      <TableCell className="font-medium">{vendor.storeName || "—"}</TableCell>
                       <TableCell>
                         <Badge
                           variant={vendor.isApproved ? "secondary" : "destructive"}
@@ -345,11 +355,7 @@ export default function AdminDashboard() {
                       </TableCell>
                       <TableCell>
                         <div className="flex space-x-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            data-testid={`button-view-vendor-${vendor.id}`}
-                          >
+                          <Button variant="ghost" size="sm" data-testid={`button-view-vendor-${vendor.id}`}>
                             <Eye className="h-4 w-4" />
                           </Button>
                           {!vendor.isApproved ? (
@@ -421,10 +427,7 @@ export default function AdminDashboard() {
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-muted-foreground">Completed Orders</span>
-                  <span
-                    className="font-medium"
-                    data-testid="text-completed-orders"
-                  >
+                  <span className="font-medium" data-testid="text-completed-orders">
                     {orders.filter((o: any) => o?.status === "delivered").length}
                   </span>
                 </div>
@@ -453,24 +456,18 @@ export default function AdminDashboard() {
                 <div className="flex justify-between items-center">
                   <span className="text-muted-foreground">Active Vendors</span>
                   <span className="font-medium" data-testid="text-active-vendors">
-                    {vendors.filter((v: any) => v?.isApproved).length}
+                    {mergedVendors.filter((v: any) => v?.isApproved).length}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-muted-foreground">Pending Approvals</span>
-                  <span
-                    className="font-medium"
-                    data-testid="text-pending-approvals"
-                  >
+                  <span className="font-medium" data-testid="text-pending-approvals">
                     {pendingVendors.length}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-muted-foreground">Active Products</span>
-                  <span
-                    className="font-medium"
-                    data-testid="text-active-products"
-                  >
+                  <span className="font-medium" data-testid="text-active-products">
                     {products.filter((p: any) => p?.isActive).length}
                   </span>
                 </div>
