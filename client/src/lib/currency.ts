@@ -1,75 +1,101 @@
 // client/src/lib/currency.ts
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
-type Currency = "NLE" | "USD";
+type CurrencyCode = "NLE" | "USD";
 
 type CurrencyCtx = {
-  currency: Currency;
-  setCurrency: (c: Currency) => void;
-  /** How many NLe = 1 USD (editable) */
-  nlePerUsd: number;
-  setNlePerUsd: (n: number) => void;
-  /** Format a price that is stored in NLe in your DB */
-  format: (priceNle: number | string) => string;
+  currency: CurrencyCode;
+  setCurrency: (c: CurrencyCode) => void;
+  rateNLePerUsd: number;
+  setRateNLePerUsd: (n: number) => void;
+  format: (dbAmountNLe: number) => string; // DB assumed NLe
+  toUsd: (nle: number) => number;
+  toNLe: (usd: number) => number;
 };
 
-const Ctx = createContext<CurrencyCtx | null>(null);
+const CurrencyContext = createContext<CurrencyCtx | null>(null);
 
-const LS_KEY = "lwg.currency";
-const DEFAULT = { currency: "NLE" as Currency, nlePerUsd: 20 }; // change anytime
+const LS_KEY_CUR = "currency.code";
+const LS_KEY_RATE = "currency.nle_per_usd";
 
 export function CurrencyProvider({ children }: { children: React.ReactNode }) {
-  const [currency, setCurrency] = useState<Currency>(DEFAULT.currency);
-  const [nlePerUsd, setNlePerUsd] = useState<number>(DEFAULT.nlePerUsd);
+  const [currency, setCurrency] = useState<CurrencyCode>(() => {
+    const saved = localStorage.getItem(LS_KEY_CUR) as CurrencyCode | null;
+    return saved === "USD" ? "USD" : "NLE";
+  });
 
-  // load saved settings
+  const [rateNLePerUsd, setRateNLePerUsd] = useState<number>(() => {
+    const raw = localStorage.getItem(LS_KEY_RATE);
+    const n = raw ? parseFloat(raw) : 25; // example default
+    return Number.isFinite(n) && n > 0 ? n : 25;
+  });
+
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(LS_KEY);
-      if (raw) {
-        const s = JSON.parse(raw);
-        if (s.currency) setCurrency(s.currency);
-        if (s.nlePerUsd) setNlePerUsd(Number(s.nlePerUsd));
-      }
-    } catch {}
-  }, []);
+    localStorage.setItem(LS_KEY_CUR, currency);
+  }, [currency]);
 
-  // save on change
   useEffect(() => {
-    try {
-      localStorage.setItem(LS_KEY, JSON.stringify({ currency, nlePerUsd }));
-    } catch {}
-  }, [currency, nlePerUsd]);
+    localStorage.setItem(LS_KEY_RATE, String(rateNLePerUsd));
+  }, [rateNLePerUsd]);
 
-  // formatter: values in DB are NLe
-  const format = useMemo(() => {
-    return (priceNle: number | string) => {
-      const nle = Number(priceNle ?? 0);
+  const toUsd = useCallback(
+    (nle: number) => (rateNLePerUsd ? nle / rateNLePerUsd : nle),
+    [rateNLePerUsd],
+  );
+  const toNLe = useCallback(
+    (usd: number) => usd * rateNLePerUsd,
+    [rateNLePerUsd],
+  );
+
+  const format = useCallback(
+    (dbAmountNLe: number) => {
+      const nle = Number(dbAmountNLe ?? 0);
       if (currency === "NLE") {
         return `NLe ${nle.toLocaleString(undefined, {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
         })}`;
       }
-      const usd = nlePerUsd > 0 ? nle / nlePerUsd : 0;
-      return `$ ${usd.toLocaleString(undefined, {
+      const usd = toUsd(nle);
+      return `$${usd.toLocaleString(undefined, {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       })}`;
-    };
-  }, [currency, nlePerUsd]);
+    },
+    [currency, toUsd],
+  );
 
-  return (
-    <Ctx.Provider
-      value={{ currency, setCurrency, nlePerUsd, setNlePerUsd, format }}
-    >
-      {children}
-    </Ctx.Provider>
+  const value = useMemo(
+    () => ({
+      currency,
+      setCurrency,
+      rateNLePerUsd,
+      setRateNLePerUsd,
+      format,
+      toUsd,
+      toNLe,
+    }),
+    [currency, rateNLePerUsd, format, toUsd, toNLe],
+  );
+
+  // No JSX here -> safe to keep this file as .ts
+  return React.createElement(
+    CurrencyContext.Provider,
+    { value },
+    children as React.ReactNode,
   );
 }
 
 export function useCurrency() {
-  const ctx = useContext(Ctx);
-  if (!ctx) throw new Error("useCurrency must be used inside CurrencyProvider");
+  const ctx = useContext(CurrencyContext);
+  if (!ctx)
+    throw new Error("useCurrency must be used within <CurrencyProvider>");
   return ctx;
 }
