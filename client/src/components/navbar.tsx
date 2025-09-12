@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useAuthStore } from "@/lib/auth";
 import { useCartStore } from "@/lib/cart";
-import { Search, ShoppingCart, Menu } from "lucide-react";
+import { Search, ShoppingCart, Menu, Store } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { site } from "@/config/site";
 
@@ -35,25 +35,11 @@ export function Navbar() {
         <div className="flex h-16 items-center justify-between">
           {/* Logo + Desktop Nav */}
           <div className="flex items-center gap-4">
-            <Link
-              href="/"
-              className="flex items-center gap-3"
-              aria-label={site.name}
-            >
-              {/* swap logos automatically with dark mode */}
-              <img
-                src={site.logo.light}
-                alt={`${site.shortName} logo`}
-                className="h-8 w-auto dark:hidden"
-              />
-              <img
-                src={site.logo.dark}
-                alt={`${site.shortName} logo`}
-                className="h-8 w-auto hidden dark:block"
-              />
-              <span className="text-xl font-extrabold tracking-tight">
-                {site.name}
-              </span>
+            <Link href="/" className="flex items-center space-x-2">
+              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+                <Store className="h-4 w-4 text-primary-foreground" />
+              </div>
+              <span className="text-xl font-bold text-foreground">{site.name}</span>
             </Link>
 
             <nav className="hidden md:flex gap-6">
@@ -141,9 +127,11 @@ export function Navbar() {
                 </Button>
               </SheetTrigger>
               <SheetContent side="right" className="w-80">
-                <div className="flex items-center gap-3">
-                  <img src={site.logo.light} alt="" className="h-7 w-auto" />
-                  <span className="font-bold">{site.name}</span>
+                <div className="flex items-center space-x-2">
+                  <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+                    <Store className="h-4 w-4 text-primary-foreground" />
+                  </div>
+                  <span className="text-xl font-bold">{site.name}</span>
                 </div>
 
                 <nav className="flex flex-col gap-4 mt-6">

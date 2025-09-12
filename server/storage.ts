@@ -1,84 +1,193 @@
-// server/storage.ts
-import { client } from "./db";
-import { randomUUID } from "crypto";
+import { 
+  users, vendors, categories, products, orders, orderItems, cartItems,
+  type User, type InsertUser, type Vendor, type InsertVendor,
+  type Category, type InsertCategory, type Product, type InsertProduct,
+  type Order, type InsertOrder, type OrderItem, type InsertOrderItem,
+  type CartItem, type InsertCartItem
+} from "@shared/schema";
+import { db } from "./db";
+import { eq, and, desc, asc } from "drizzle-orm";
 
-// --- helpers ----------------------------------------------------
-type VendorRow = {
-  id: string;
-  user_id: string;
-  store_name: string;
-  is_approved: boolean;
-  created_at: Date | string;
-};
-
-function rowToVendor(r: VendorRow) {
-  return {
-    id: r.id,
-    userId: r.user_id,
-    storeName: r.store_name,
-    isApproved: r.is_approved,
-    createdAt:
-      typeof r.created_at === "string" ? new Date(r.created_at) : r.created_at,
-  };
+export interface IStorage {
+  // User methods
+  getUser(id: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
+  createUser(user: InsertUser): Promise<User>;
+  
+  // Vendor methods
+  getVendor(id: string): Promise<Vendor | undefined>;
+  getVendorByUserId(userId: string): Promise<Vendor | undefined>;
+  createVendor(vendor: InsertVendor): Promise<Vendor>;
+  updateVendorApproval(id: string, isApproved: boolean): Promise<void>;
+  getAllVendors(): Promise<Vendor[]>;
+  
+  // Category methods
+  getAllCategories(): Promise<Category[]>;
+  createCategory(category: InsertCategory): Promise<Category>;
+  
+  // Product methods
+  getAllProducts(): Promise<Product[]>;
+  getProduct(id: string): Promise<Product | undefined>;
+  getProductsByVendor(vendorId: string): Promise<Product[]>;
+  getProductsByCategory(categoryId: string): Promise<Product[]>;
+  createProduct(product: InsertProduct): Promise<Product>;
+  updateProduct(id: string, product: Partial<InsertProduct>): Promise<Product>;
+  deleteProduct(id: string): Promise<void>;
+  
+  // Cart methods
+  getCartItems(userId: string): Promise<CartItem[]>;
+  addToCart(cartItem: InsertCartItem): Promise<CartItem>;
+  updateCartItem(id: string, quantity: number): Promise<void>;
+  removeFromCart(id: string): Promise<void>;
+  clearCart(userId: string): Promise<void>;
+  
+  // Order methods
+  createOrder(order: InsertOrder, items: InsertOrderItem[]): Promise<Order>;
+  getOrdersByCustomer(customerId: string): Promise<Order[]>;
+  getOrdersByVendor(vendorId: string): Promise<Order[]>;
+  getAllOrders(): Promise<Order[]>;
+  updateOrderStatus(id: string, status: string): Promise<void>;
 }
 
-// --- VENDOR API -------------------------------------------------
+export class DatabaseStorage implements IStorage {
+  async getUser(id: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user || undefined;
+  }
 
-export async function createVendor(input: {
-  userId: string;
-  storeName: string;
-}) {
-  const id = randomUUID().slice(0, 8); // keep ids short like your sample "vendor1"
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user || undefined;
+  }
 
-  // Force all new vendors to be PENDING (is_approved = false)
-  const q = `
-    INSERT INTO vendors (id, user_id, store_name, is_approved, created_at)
-    VALUES ($1, $2, $3, false, NOW())
-    RETURNING id, user_id, store_name, is_approved, created_at
-  `;
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const [user] = await db.insert(users).values(insertUser).returning();
+    return user;
+  }
 
-  const { rows } = await client.query(q, [id, input.userId, input.storeName]);
-  return rowToVendor(rows[0]);
+  async getVendor(id: string): Promise<Vendor | undefined> {
+    const [vendor] = await db.select().from(vendors).where(eq(vendors.id, id));
+    return vendor || undefined;
+  }
+
+  async getVendorByUserId(userId: string): Promise<Vendor | undefined> {
+    const [vendor] = await db.select().from(vendors).where(eq(vendors.userId, userId));
+    return vendor || undefined;
+  }
+
+  async createVendor(insertVendor: InsertVendor): Promise<Vendor> {
+    const [vendor] = await db.insert(vendors).values(insertVendor).returning();
+    return vendor;
+  }
+
+  async updateVendorApproval(id: string, isApproved: boolean): Promise<void> {
+    await db.update(vendors).set({ isApproved }).where(eq(vendors.id, id));
+  }
+
+  async getAllVendors(): Promise<Vendor[]> {
+    return await db.select().from(vendors).orderBy(desc(vendors.createdAt));
+  }
+
+  async getAllCategories(): Promise<Category[]> {
+    return await db.select().from(categories).orderBy(asc(categories.name));
+  }
+
+  async createCategory(insertCategory: InsertCategory): Promise<Category> {
+    const [category] = await db.insert(categories).values(insertCategory).returning();
+    return category;
+  }
+
+  async getAllProducts(): Promise<Product[]> {
+    return await db.select().from(products).where(eq(products.isActive, true)).orderBy(desc(products.createdAt));
+  }
+
+  async getProduct(id: string): Promise<Product | undefined> {
+    const [product] = await db.select().from(products).where(eq(products.id, id));
+    return product || undefined;
+  }
+
+  async getProductsByVendor(vendorId: string): Promise<Product[]> {
+    return await db.select().from(products).where(eq(products.vendorId, vendorId)).orderBy(desc(products.createdAt));
+  }
+
+  async getProductsByCategory(categoryId: string): Promise<Product[]> {
+    return await db.select().from(products)
+      .where(and(eq(products.categoryId, categoryId), eq(products.isActive, true)))
+      .orderBy(desc(products.createdAt));
+  }
+
+  async createProduct(insertProduct: InsertProduct): Promise<Product> {
+    const [product] = await db.insert(products).values(insertProduct).returning();
+    return product;
+  }
+
+  async updateProduct(id: string, product: Partial<InsertProduct>): Promise<Product> {
+    const [updatedProduct] = await db.update(products).set(product).where(eq(products.id, id)).returning();
+    return updatedProduct;
+  }
+
+  async deleteProduct(id: string): Promise<void> {
+    await db.update(products).set({ isActive: false }).where(eq(products.id, id));
+  }
+
+  async getCartItems(userId: string): Promise<CartItem[]> {
+    return await db.select().from(cartItems).where(eq(cartItems.userId, userId));
+  }
+
+  async addToCart(insertCartItem: InsertCartItem): Promise<CartItem> {
+    const [cartItem] = await db.insert(cartItems).values(insertCartItem).returning();
+    return cartItem;
+  }
+
+  async updateCartItem(id: string, quantity: number): Promise<void> {
+    await db.update(cartItems).set({ quantity }).where(eq(cartItems.id, id));
+  }
+
+  async removeFromCart(id: string): Promise<void> {
+    await db.delete(cartItems).where(eq(cartItems.id, id));
+  }
+
+  async clearCart(userId: string): Promise<void> {
+    await db.delete(cartItems).where(eq(cartItems.userId, userId));
+  }
+
+  async createOrder(insertOrder: InsertOrder, items: InsertOrderItem[]): Promise<Order> {
+    const [order] = await db.insert(orders).values(insertOrder).returning();
+    
+    if (items.length > 0) {
+      await db.insert(orderItems).values(items.map(item => ({ ...item, orderId: order.id })));
+    }
+    
+    return order;
+  }
+
+  async getOrdersByCustomer(customerId: string): Promise<Order[]> {
+    return await db.select().from(orders).where(eq(orders.customerId, customerId)).orderBy(desc(orders.createdAt));
+  }
+
+  async getOrdersByVendor(vendorId: string): Promise<Order[]> {
+    return await db.select({
+      id: orders.id,
+      customerId: orders.customerId,
+      total: orders.total,
+      status: orders.status,
+      shippingAddress: orders.shippingAddress,
+      createdAt: orders.createdAt,
+    })
+    .from(orders)
+    .innerJoin(orderItems, eq(orders.id, orderItems.orderId))
+    .innerJoin(products, eq(orderItems.productId, products.id))
+    .where(eq(products.vendorId, vendorId))
+    .orderBy(desc(orders.createdAt));
+  }
+
+  async getAllOrders(): Promise<Order[]> {
+    return await db.select().from(orders).orderBy(desc(orders.createdAt));
+  }
+
+  async updateOrderStatus(id: string, status: string): Promise<void> {
+    await db.update(orders).set({ status }).where(eq(orders.id, id));
+  }
 }
 
-export async function getAllVendors() {
-  const q = `
-    SELECT id, user_id, store_name, is_approved, created_at
-    FROM vendors
-    ORDER BY created_at DESC
-  `;
-  const { rows } = await client.query(q);
-  return rows.map(rowToVendor);
-}
-
-export async function getVendorByUserId(userId: string) {
-  const q = `
-    SELECT id, user_id, store_name, is_approved, created_at
-    FROM vendors
-    WHERE user_id = $1
-    LIMIT 1
-  `;
-  const { rows } = await client.query(q, [userId]);
-  return rows[0] ? rowToVendor(rows[0]) : null;
-}
-
-export async function updateVendorApproval(
-  vendorId: string,
-  isApproved: boolean,
-) {
-  const q = `
-    UPDATE vendors
-    SET is_approved = $2
-    WHERE id = $1
-  `;
-  await client.query(q, [vendorId, isApproved]);
-  return { ok: true };
-}
-
-// If you already export an object named `storage` elsewhere, you can export it here too:
-export const storage = {
-  createVendor,
-  getAllVendors,
-  getVendorByUserId,
-  updateVendorApproval,
-};
+export const storage = new DatabaseStorage();
