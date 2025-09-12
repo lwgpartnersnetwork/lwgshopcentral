@@ -13,20 +13,24 @@ import Register from "@/pages/register";
 import ProductDetails from "@/pages/product-details";
 import VendorDashboard from "@/pages/vendor-dashboard";
 import AdminDashboard from "@/pages/admin-dashboard";
+import Categories from "@/pages/categories";
+import BecomeVendor from "@/pages/become-vendor";
+import Support from "@/pages/support";
 import NotFound from "@/pages/not-found";
-
-// NOTE: We make /admin-dashboard PUBLIC for testing.
-// Later, we can put AuthGuard back after you confirm it works.
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
+      <Route path="/categories" component={Categories} />
+      <Route path="/become-vendor" component={BecomeVendor} />
+      <Route path="/support" component={Support} />
+
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
       <Route path="/products/:id" component={ProductDetails} />
+
       <Route path="/vendor-dashboard" component={VendorDashboard} />
-      {/* TEMP: public admin page so you can see it now */}
       <Route path="/admin-dashboard" component={AdminDashboard} />
       <Route component={NotFound} />
     </Switch>

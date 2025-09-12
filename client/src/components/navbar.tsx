@@ -5,8 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useAuthStore } from "@/lib/auth";
 import { useCartStore } from "@/lib/cart";
-import { Search, ShoppingCart, Store, Menu } from "lucide-react";
+import { Search, ShoppingCart, Menu } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { site } from "@/config/site";
 
 export function Navbar() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -21,13 +22,10 @@ export function Navbar() {
     }
   };
 
-  const handleCartClick = () => openCart();
-
-  // ✅ Updated path for "Become Vendor"
   const navigation = [
     { name: "Home", href: "/" },
     { name: "Categories", href: "/categories" },
-    { name: "Become Vendor", href: "/become-vendor" },
+    { name: "Become Vendor", href: "/become-vendor" }, // <— works with your file name
     { name: "Support", href: "/support" },
   ];
 
@@ -36,17 +34,29 @@ export function Navbar() {
       <div className="container mx-auto px-4">
         <div className="flex h-16 items-center justify-between">
           {/* Logo + Desktop Nav */}
-          <div className="flex items-center space-x-4">
-            <Link href="/" className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                <Store className="h-4 w-4 text-primary-foreground" />
-              </div>
-              <span className="text-xl font-bold text-foreground">
-                MarketPlace Pro
+          <div className="flex items-center gap-4">
+            <Link
+              href="/"
+              className="flex items-center gap-3"
+              aria-label={site.name}
+            >
+              {/* swap logos automatically with dark mode */}
+              <img
+                src={site.logo.light}
+                alt={`${site.shortName} logo`}
+                className="h-8 w-auto dark:hidden"
+              />
+              <img
+                src={site.logo.dark}
+                alt={`${site.shortName} logo`}
+                className="h-8 w-auto hidden dark:block"
+              />
+              <span className="text-xl font-extrabold tracking-tight">
+                {site.name}
               </span>
             </Link>
 
-            <nav className="hidden md:flex space-x-6">
+            <nav className="hidden md:flex gap-6">
               {navigation.map((item) => (
                 <Link
                   key={item.name}
@@ -74,22 +84,20 @@ export function Navbar() {
             </form>
           </div>
 
-          {/* Actions */}
-          <div className="flex items-center space-x-4">
+          {/* Right actions */}
+          <div className="flex items-center gap-2">
             {/* Cart */}
             <Button
               variant="ghost"
               size="sm"
-              onClick={handleCartClick}
+              onClick={openCart}
               className="relative"
-              data-testid="button-cart"
             >
               <ShoppingCart className="h-5 w-5" />
               {getTotalItems() > 0 && (
                 <Badge
                   variant="secondary"
                   className="absolute -top-1 -right-1 bg-accent text-accent-foreground text-xs rounded-full w-5 h-5 flex items-center justify-center"
-                  data-testid="badge-cart-count"
                 >
                   {getTotalItems()}
                 </Badge>
@@ -98,44 +106,29 @@ export function Navbar() {
 
             {/* Auth */}
             {isAuthenticated ? (
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center gap-2">
                 <span className="hidden md:inline text-sm text-muted-foreground">
                   Welcome, {user?.firstName}
                 </span>
 
                 {user?.role === "vendor" && (
                   <Button variant="outline" size="sm" asChild>
-                    <Link
-                      href="/vendor-dashboard"
-                      data-testid="link-vendor-dashboard"
-                    >
-                      Dashboard
-                    </Link>
+                    <Link href="/vendor-dashboard">Dashboard</Link>
                   </Button>
                 )}
 
                 {user?.role === "admin" && (
                   <Button variant="outline" size="sm" asChild>
-                    <Link
-                      href="/admin-dashboard"
-                      data-testid="link-admin-dashboard"
-                    >
-                      Admin
-                    </Link>
+                    <Link href="/admin-dashboard">Admin</Link>
                   </Button>
                 )}
 
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={logout}
-                  data-testid="button-logout"
-                >
+                <Button variant="outline" size="sm" onClick={logout}>
                   Logout
                 </Button>
               </div>
             ) : (
-              <Button size="sm" asChild data-testid="button-sign-in">
+              <Button size="sm" asChild>
                 <Link href="/login">Sign In</Link>
               </Button>
             )}
@@ -148,7 +141,12 @@ export function Navbar() {
                 </Button>
               </SheetTrigger>
               <SheetContent side="right" className="w-80">
-                <nav className="flex flex-col space-y-4 mt-8">
+                <div className="flex items-center gap-3">
+                  <img src={site.logo.light} alt="" className="h-7 w-auto" />
+                  <span className="font-bold">{site.name}</span>
+                </div>
+
+                <nav className="flex flex-col gap-4 mt-6">
                   {navigation.map((item) => (
                     <Link
                       key={item.name}
