@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Navbar } from "@/components/navbar";
 import Footer from "@/components/footer";
 import { CartSidebar } from "@/components/cart-sidebar";
+import { CurrencyProvider } from "@/lib/currency"; // ✅ currency context
 
 // Pages
 import Home from "@/pages/home";
@@ -113,17 +114,21 @@ function Router() {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <div className="min-h-screen bg-background">
-          <Navbar />
-          <main>
-            <Router />
-          </main>
-          <Footer />
-          <CartSidebar />
-        </div>
-        <Toaster />
-      </TooltipProvider>
+      <CurrencyProvider>
+        {/* ✅ NLe/USD formatter available app-wide */}
+        <TooltipProvider>
+          {/* overflow-x-hidden prevents side-to-side wiggle on mobile */}
+          <div className="min-h-screen bg-background overflow-x-hidden">
+            <Navbar />
+            <main>
+              <Router />
+            </main>
+            <Footer />
+            <CartSidebar />
+          </div>
+          <Toaster />
+        </TooltipProvider>
+      </CurrencyProvider>
     </QueryClientProvider>
   );
 }
