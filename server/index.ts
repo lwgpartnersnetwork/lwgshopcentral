@@ -1,14 +1,19 @@
 // server/index.ts
+import "dotenv/config";
 import express, {
   type Request,
   type Response,
   type NextFunction,
 } from "express";
+import cors from "cors";
 import path from "node:path";
 import fs from "node:fs";
+
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { db } from "./db"; // ensure DB init happens
+import { env } from "./env"; // <- central validated env reader
+import { checkoutRouter } from "./routes/checkout"; // <- new checkout API
 
 const app = express();
 
@@ -17,6 +22,18 @@ app.set("trust proxy", 1);
 app.disable("x-powered-by");
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: false }));
+
+// CORS using your allowed origins list from env
+app.use(
+  cors({
+    credentials: true,
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true); // same-origin / curl
+      if (env.CORS_ORIGINS.includes(origin)) return cb(null, true);
+      return cb(new Error(`CORS blocked: ${origin}`));
+    },
+  }),
+);
 
 /**
  * Tiny API logger (only for /api/*).
@@ -54,17 +71,32 @@ app.use((req, res, next) => {
   next();
 });
 
+/** 
+ * Business APIs
+ * Mount the new Checkout API BEFORE registerRoutes (order doesn’t matter much,
+ * but this keeps the intent clear).
+ */
+app.use("/api/checkout", checkoutRouter);
+
 /**
  * Health. If DB import failed, the process would have crashed already.
- * You can add a trivial SELECT ping here if you ever need to.
+ * Report extra info so you can see email/whatsapp wiring.
  */
 app.get("/api/health", (_req: Request, res: Response) => {
   void db; // touches the import to prevent tree-shaking in some bundlers
-  res.json({ status: "ok" });
+  res.json({
+    status: "ok",
+    env: env.NODE_ENV,
+    appUrl: env.APP_URL,
+    corsOrigins: env.CORS_ORIGINS,
+    currency: { default: env.CURRENCY.default, usdRate: env.CURRENCY.usdRate },
+    emailConfigured: Boolean(env.SMTP.user),
+    whatsappConfigured: Boolean(env.TWILIO),
+  });
 });
 
 (async () => {
-  // Attach all API routes; our register returns the HTTP server instance
+  // Attach all remaining API routes; our register returns the HTTP server instance
   const server = await registerRoutes(app);
 
   // JSON 404 for unknown API routes (before static handling)
@@ -101,7 +133,7 @@ app.get("/api/health", (_req: Request, res: Response) => {
   }
 
   // Use platform PORT, default 5000 locally
-  const port = Number(process.env.PORT || 5000);
+  const port = Number(process.env.PORT || env.PORT || 5000);
   server.listen({ port, host: "0.0.0.0", reusePort: true }, () => {
     log(`serving on port ${port}`);
   });

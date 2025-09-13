@@ -24,10 +24,11 @@ export const site: SiteConfig = {
   supportPhone: "+23272146015",
 
   // Public assets in /client/public (must match filenames exactly)
+  // Use the timestamped names you provided
   logoBlue: "/lwg-logo-blue.png_17576414729992.png",
   logoYellow: "/lwg-logo-yellow.png_1757641586275.png",
 
-  // Use your single favicon file for both link tags
+  // Use the same favicon file for both sizes for now
   favicon16: "/lwg-favicon.png_1757641803765.png",
   favicon32: "/lwg-favicon.png_1757641803765.png",
 };

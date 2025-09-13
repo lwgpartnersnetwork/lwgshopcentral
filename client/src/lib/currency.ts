@@ -8,6 +8,31 @@ import React, {
   useState,
 } from "react";
 
+/**
+ * Optional build-time env (Vite): create client/.env with e.g.:
+ *   VITE_DEFAULT_CURRENCY=NLE
+ *   VITE_USD_RATE=22.50
+ * These are baked at build time. LocalStorage still wins after the user changes it.
+ */
+const ENV_DEFAULT_CURRENCY =
+  (typeof import.meta !== "undefined" &&
+    (import.meta as any).env &&
+    (import.meta as any).env.VITE_DEFAULT_CURRENCY) ||
+  (typeof process !== "undefined" &&
+    (process as any).env &&
+    ((process as any).env.VITE_DEFAULT_CURRENCY ||
+      (process as any).env.DEFAULT_CURRENCY)) ||
+  "NLE";
+
+const ENV_USD_RATE =
+  (typeof import.meta !== "undefined" &&
+    (import.meta as any).env &&
+    (import.meta as any).env.VITE_USD_RATE) ||
+  (typeof process !== "undefined" &&
+    (process as any).env &&
+    ((process as any).env.VITE_USD_RATE || (process as any).env.USD_RATE)) ||
+  "25";
+
 type CurrencyCode = "NLE" | "USD";
 
 type CurrencyCtx = {
@@ -15,8 +40,11 @@ type CurrencyCtx = {
   setCurrency: (c: CurrencyCode) => void;
   rateNLePerUsd: number;
   setRateNLePerUsd: (n: number) => void;
-  format: (dbAmountNLe: number) => string; // DB assumed NLe
+  /** DB amounts are assumed to be stored in NLe */
+  format: (dbAmountNLe: number | string) => string;
+  /** Convert NLe -> USD using current rate */
   toUsd: (nle: number) => number;
+  /** Convert USD -> NLe using current rate */
   toNLe: (usd: number) => number;
 };
 
@@ -25,38 +53,76 @@ const CurrencyContext = createContext<CurrencyCtx | null>(null);
 const LS_KEY_CUR = "currency.code";
 const LS_KEY_RATE = "currency.nle_per_usd";
 
+/** tiny guards so we don't blow up on SSR / build */
+const hasWindow = typeof window !== "undefined";
+const safeGet = (k: string) => {
+  try {
+    if (!hasWindow || !("localStorage" in window)) return null;
+    return window.localStorage.getItem(k);
+  } catch {
+    return null;
+  }
+};
+const safeSet = (k: string, v: string) => {
+  try {
+    if (!hasWindow || !("localStorage" in window)) return;
+    window.localStorage.setItem(k, v);
+  } catch {
+    // ignore
+  }
+};
+
+function clampCurrency(c?: string | null): CurrencyCode {
+  return c === "USD" ? "USD" : "NLE";
+}
+
+function parsePositiveFloat(v: unknown, fallback: number): number {
+  const n = typeof v === "number" ? v : parseFloat(String(v ?? ""));
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
 export function CurrencyProvider({ children }: { children: React.ReactNode }) {
+  // Initial currency: LS -> ENV -> "NLE"
   const [currency, setCurrency] = useState<CurrencyCode>(() => {
-    const saved = localStorage.getItem(LS_KEY_CUR) as CurrencyCode | null;
-    return saved === "USD" ? "USD" : "NLE";
+    const saved = safeGet(LS_KEY_CUR);
+    return clampCurrency(saved ?? ENV_DEFAULT_CURRENCY);
   });
 
+  // Initial rate: LS -> ENV -> 25
   const [rateNLePerUsd, setRateNLePerUsd] = useState<number>(() => {
-    const raw = localStorage.getItem(LS_KEY_RATE);
-    const n = raw ? parseFloat(raw) : 25; // example default
-    return Number.isFinite(n) && n > 0 ? n : 25;
+    const saved = safeGet(LS_KEY_RATE);
+    if (saved) return parsePositiveFloat(saved, 25);
+    return parsePositiveFloat(ENV_USD_RATE, 25);
   });
 
+  // Persist changes
   useEffect(() => {
-    localStorage.setItem(LS_KEY_CUR, currency);
+    safeSet(LS_KEY_CUR, currency);
   }, [currency]);
 
   useEffect(() => {
-    localStorage.setItem(LS_KEY_RATE, String(rateNLePerUsd));
+    safeSet(LS_KEY_RATE, String(rateNLePerUsd));
   }, [rateNLePerUsd]);
 
   const toUsd = useCallback(
-    (nle: number) => (rateNLePerUsd ? nle / rateNLePerUsd : nle),
+    (nle: number) => {
+      const rate = rateNLePerUsd || 1;
+      return nle / rate;
+    },
     [rateNLePerUsd],
   );
+
   const toNLe = useCallback(
-    (usd: number) => usd * rateNLePerUsd,
+    (usd: number) => usd * (rateNLePerUsd || 1),
     [rateNLePerUsd],
   );
 
   const format = useCallback(
-    (dbAmountNLe: number) => {
+    (dbAmountNLe: number | string) => {
       const nle = Number(dbAmountNLe ?? 0);
+      if (!Number.isFinite(nle))
+        return currency === "USD" ? "$0.00" : "NLe 0.00";
+
       if (currency === "NLE") {
         return `NLe ${nle.toLocaleString(undefined, {
           minimumFractionDigits: 2,
@@ -75,9 +141,10 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo(
     () => ({
       currency,
-      setCurrency,
+      setCurrency: (c: CurrencyCode) => setCurrency(clampCurrency(c)),
       rateNLePerUsd,
-      setRateNLePerUsd,
+      setRateNLePerUsd: (n: number) =>
+        setRateNLePerUsd(parsePositiveFloat(n, rateNLePerUsd || 25)),
       format,
       toUsd,
       toNLe,
@@ -85,7 +152,7 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
     [currency, rateNLePerUsd, format, toUsd, toNLe],
   );
 
-  // No JSX here -> safe to keep this file as .ts
+  // No JSX: keep this file .ts-friendly
   return React.createElement(
     CurrencyContext.Provider,
     { value },
