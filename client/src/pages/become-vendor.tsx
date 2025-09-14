@@ -1,198 +1,131 @@
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import * as z from "zod";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+// client/src/pages/become-vendor.tsx
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useToast } from "@/hooks/use-toast";
-
-// ✅ Define validation rules using Zod
-const vendorSchema = z.object({
-  storeName: z.string().min(3, "Store name must be at least 3 characters"),
-  email: z.string().email("Enter a valid email"),
-  phone: z.string().min(8, "Enter a valid phone number"),
-  address: z.string().min(5, "Address is too short"),
-  description: z.string().min(10, "Description must be at least 10 characters"),
-});
-
-type VendorFormData = z.infer<typeof vendorSchema>;
-
-export default function BecomeVendor() {
-  const { toast } = useToast();
-
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-    reset,
-  } = useForm<VendorFormData>({
-    resolver: zodResolver(vendorSchema),
-  });
-
-  // ✅ What happens when user submits
-  const onSubmit = async (data: VendorFormData) => {
-    console.log("Vendor registration data:", data);
-
-    // Here you’d send data to backend: await apiRequest("POST", "/api/vendors", data);
-
-    toast({
-      title: "Application submitted!",
-      description: "We’ll review your vendor application shortly.",
-    });
-
-    reset(); // clear form after submit
-  };
-
-  return (
-    <div className="container mx-auto max-w-2xl py-10">
-      <Card>
-        <CardHeader>
-          <CardTitle>Become a Vendor</CardTitle>
-          <p className="text-muted-foreground">
-            Register your store and start selling on MarketPlace Pro.
-          </p>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            {/* Store Name */}
-            <div>
-              <Input placeholder="Store Name" {...register("storeName")} />
-              {errors.storeName && (
-                <p className="text-red-500 text-sm">
-                  {errors.storeName.message}
-                </p>
-              )}
-            </div>
-
-            {/* Email */}
-            <div>
-              <Input type="email" placeholder="Email" {...register("email")} />
-              {errors.email && (
-                <p className="text-red-500 text-sm">{errors.email.message}</p>
-              )}
-            </div>
-
-            {/* Phone */}
-            <div>
-              <Input
-                type="tel"
-                placeholder="Phone Number"
-                {...register("phone")}
-              />
-              {errors.phone && (
-                <p className="text-red-500 text-sm">{errors.phone.message}</p>
-              )}
-            </div>
-
-            {/* Address */}
-            <div>
-              <Input placeholder="Business Address" {...register("address")} />
-              {errors.address && (
-                <p className="text-red-500 text-sm">{errors.address.message}</p>
-              )}
-            </div>
-
-            {/* Description */}
-            <div>
-              <textarea
-                placeholder="Brief description about your business..."
-                className="w-full border rounded-md p-2"
-                rows={4}
-                {...register("description")}
-              />
-              {errors.description && (
-                <p className="text-red-500 text-sm">
-                  {errors.description.message}
-                </p>
-              )}
-            </div>
-
-            {/* Submit Button */}
-            <Button type="submit" disabled={isSubmitting} className="w-full">
-              {isSubmitting ? "Submitting..." : "Submit Application"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-
-
-
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { useMutation } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
-
-const FormSchema = z.object({
-  storeName: z.string().min(2, "Store name is required"),
-  email: z.string().email().optional(),
-  phone: z.string().optional(),
-  address: z.string().optional(),
-  description: z.string().optional(),
-});
-
-type FormData = z.infer<typeof FormSchema>;
+import { useAuthStore } from "@/lib/auth";
 
 export default function BecomeVendor() {
+  const { user } = useAuthStore();
   const { toast } = useToast();
-  const form = useForm<FormData>({ resolver: zodResolver(FormSchema) });
 
-  const mutate = useMutation({
-    mutationFn: async (data: FormData) => {
+  const [storeName, setStoreName] = useState("");
+  const [email, setEmail] = useState(user?.email ?? "");
+  const [phone, setPhone] = useState("");
+  const [address, setAddress] = useState("");
+  const [description, setDescription] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!storeName.trim()) {
+      toast({ title: "Store name is required", variant: "destructive" });
+      return;
+    }
+    if (!user?.id && !email.trim()) {
+      toast({
+        title: "Email is required",
+        description: "Provide an email if you’re not signed in.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
       const res = await fetch("/api/vendors/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          storeName,
+          email: email || undefined,
+          phone: phone || undefined,
+          address: address || undefined,
+          description: description || undefined,
+          userId: user?.id ?? undefined, // optional
+        }),
       });
+
+      const data = await res.json();
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body?.message || "Failed to submit application");
+        throw new Error(data?.message || "Failed to submit application");
       }
-      return res.json();
-    },
-    onSuccess: () => {
+
       toast({
         title: "Application submitted!",
         description: "We’ll review your vendor application shortly.",
       });
-      form.reset();
-    },
-    onError: (err: any) => {
-      toast({ title: "Error", description: String(err.message), variant: "destructive" });
-    },
-  });
+
+      // reset
+      setStoreName("");
+      setPhone("");
+      setAddress("");
+      setDescription("");
+      if (!user?.id) setEmail("");
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.message ?? "Failed to submit vendor application",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
-    <div className="container mx-auto max-w-2xl px-4 py-12">
-      <h1 className="text-2xl font-bold mb-4">Become a Vendor</h1>
-      <p className="text-muted-foreground mb-8">
-        Register your store and start selling on MarketPlace Pro.
-      </p>
+    <div className="container mx-auto px-4 py-10">
+      <Card className="max-w-2xl mx-auto">
+        <CardHeader>
+          <CardTitle>Become a Vendor</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Register your store and start selling on MarketPlace Pro.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={onSubmit} className="space-y-4">
+            <Input
+              placeholder="Store Name"
+              value={storeName}
+              onChange={(e) => setStoreName(e.target.value)}
+              required
+            />
 
-      <form
-        className="space-y-4"
-        onSubmit={form.handleSubmit((data) => mutate.mutate(data))}
-      >
-        <Input placeholder="Store Name" {...form.register("storeName")} />
-        <Input placeholder="Email" type="email" {...form.register("email")} />
-        <Input placeholder="Phone Number" {...form.register("phone")} />
-        <Input placeholder="Business Address" {...form.register("address")} />
-        <Textarea
-          placeholder="Brief description about your business…"
-          rows={5}
-          {...form.register("description")}
-        />
-        <Button type="submit" disabled={mutate.isLoading} className="w-full">
-          {mutate.isLoading ? "Submitting…" : "Submit Application"}
-        </Button>
-      </form>
+            {/* Email is optional when logged in; required if guest */}
+            <Input
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+
+            <Input
+              placeholder="Phone Number"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+            />
+
+            <Input
+              placeholder="Business Address"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+            />
+
+            <Textarea
+              placeholder="Brief description about your business…"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={5}
+            />
+
+            <Button type="submit" disabled={loading} className="w-full">
+              {loading ? "Submitting…" : "Submit Application"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }
