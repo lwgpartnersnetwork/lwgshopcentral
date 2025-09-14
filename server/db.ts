@@ -2,22 +2,40 @@
 import "dotenv/config";
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
-
-// Import your table definitions
 import * as schema from "../shared/schema";
+import { env } from "./env";
 
-// Create a pooled connection to your database
+/**
+ * Postgres connection pool
+ * - Uses SSL in production (Render/Neon).
+ * - Conservative pool sizing; override with PGPOOL_MAX if you need.
+ */
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: env.DATABASE_URL,
   ssl:
-    process.env.NODE_ENV === "production"
-      ? { rejectUnauthorized: false }
+    env.NODE_ENV === "production"
+      ? { rejectUnauthorized: false } // Neon/Render
       : undefined,
+  max: Number(process.env.PGPOOL_MAX || 10),
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 10_000,
+  keepAlive: true,
 });
 
-// Drizzle DB instance with schema attached (helps with type-safety)
+/** Drizzle DB instance with schema attached for type safety */
 export const db = drizzle(pool, { schema });
 
-// Re-export ALL tables/types so other files can do:
-//   import { db, users, vendors, orders, orderItems, products, categories } from "../db";
+/** Re-export all tables/types so other modules can import directly from "../db" */
 export * from "../shared/schema";
+
+/** Optional: graceful shutdown so Render doesn’t keep hanging connections */
+const shutdown = async () => {
+  try {
+    await pool.end();
+  } catch {
+    // ignore
+  }
+};
+
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
