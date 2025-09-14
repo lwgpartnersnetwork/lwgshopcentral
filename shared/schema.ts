@@ -307,3 +307,31 @@ export type InsertOrderItem = z.infer<typeof insertOrderItemSchema>;
 
 export type CartItem = typeof cartItems.$inferSelect;
 export type InsertCartItem = z.infer<typeof insertCartItemSchema>;
+
+
+// … existing imports at top
+import { sql } from "drizzle-orm";
+import { pgTable, text, varchar, integer, decimal, timestamp, boolean, jsonb } from "drizzle-orm/pg-core";
+
+// --- keep your other tables here (users, categories, products, …) ---
+
+export const vendors = pgTable("vendors", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+
+  // ✅ userId is OPTIONAL so people can apply before creating an account
+  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }),
+
+  storeName: text("store_name").notNull(),
+
+  // ✅ new fields so the admin can contact the applicant
+  email: text("email"),
+  phone: text("phone"),
+  address: text("address"),
+
+  description: text("description"),
+  isApproved: boolean("is_approved").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// … keep the rest of your tables & relations below
+

@@ -117,3 +117,82 @@ export default function BecomeVendor() {
     </div>
   );
 }
+
+
+
+
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { useMutation } from "@tanstack/react-query";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/use-toast";
+
+const FormSchema = z.object({
+  storeName: z.string().min(2, "Store name is required"),
+  email: z.string().email().optional(),
+  phone: z.string().optional(),
+  address: z.string().optional(),
+  description: z.string().optional(),
+});
+
+type FormData = z.infer<typeof FormSchema>;
+
+export default function BecomeVendor() {
+  const { toast } = useToast();
+  const form = useForm<FormData>({ resolver: zodResolver(FormSchema) });
+
+  const mutate = useMutation({
+    mutationFn: async (data: FormData) => {
+      const res = await fetch("/api/vendors/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.message || "Failed to submit application");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Application submitted!",
+        description: "We’ll review your vendor application shortly.",
+      });
+      form.reset();
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: String(err.message), variant: "destructive" });
+    },
+  });
+
+  return (
+    <div className="container mx-auto max-w-2xl px-4 py-12">
+      <h1 className="text-2xl font-bold mb-4">Become a Vendor</h1>
+      <p className="text-muted-foreground mb-8">
+        Register your store and start selling on MarketPlace Pro.
+      </p>
+
+      <form
+        className="space-y-4"
+        onSubmit={form.handleSubmit((data) => mutate.mutate(data))}
+      >
+        <Input placeholder="Store Name" {...form.register("storeName")} />
+        <Input placeholder="Email" type="email" {...form.register("email")} />
+        <Input placeholder="Phone Number" {...form.register("phone")} />
+        <Input placeholder="Business Address" {...form.register("address")} />
+        <Textarea
+          placeholder="Brief description about your business…"
+          rows={5}
+          {...form.register("description")}
+        />
+        <Button type="submit" disabled={mutate.isLoading} className="w-full">
+          {mutate.isLoading ? "Submitting…" : "Submit Application"}
+        </Button>
+      </form>
+    </div>
+  );
+}
