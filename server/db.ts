@@ -1,25 +1,23 @@
 // server/db.ts
-import { Pool, neonConfig } from "@neondatabase/serverless";
-import ws from "ws";
-import { drizzle } from "drizzle-orm/neon-serverless";
-import * as schema from "@shared/schema";
+import "dotenv/config";
+import { Pool } from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
 
-neonConfig.webSocketConstructor = ws;
+// Import your table definitions
+import * as schema from "../shared/schema";
 
-if (!process.env.DATABASE_URL) {
-  throw new Error(
-    "DATABASE_URL must be set. Did you forget to provision a database?",
-  );
-}
+// Create a pooled connection to your database
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl:
+    process.env.NODE_ENV === "production"
+      ? { rejectUnauthorized: false }
+      : undefined,
+});
 
-// Create the Neon pool (this HAS .query)
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-
-// ✅ Export a PG-like client that ALWAYS has .query(...)
-export const client = {
-  query: (text: string, params?: any[]) =>
-    pool.query(text as any, params as any),
-};
-
-// ✅ Export Drizzle (typed ORM — optional for now)
+// Drizzle DB instance with schema attached (helps with type-safety)
 export const db = drizzle(pool, { schema });
+
+// Re-export ALL tables/types so other files can do:
+//   import { db, users, vendors, orders, orderItems, products, categories } from "../db";
+export * from "../shared/schema";
