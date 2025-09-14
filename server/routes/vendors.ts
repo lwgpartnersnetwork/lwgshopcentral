@@ -1,128 +1,178 @@
 // server/routes/vendors.ts
-import { Router } from "express";
-import { z } from "zod";
-import { and, eq } from "drizzle-orm";
+import { Router, Request, Response } from "express";
+import bcrypt from "bcrypt";
 import { db, users, vendors } from "../db";
+import { eq, and } from "drizzle-orm";
+
+// Small helpers
+const ok = (res: Response, data: unknown) => res.json(data);
+const bad = (res: Response, msg = "Bad Request") =>
+  res.status(400).json({ message: msg });
+const notFound = (res: Response, msg = "Not found") =>
+  res.status(404).json({ message: msg });
+const fail = (res: Response, err: unknown) => {
+  // eslint-disable-next-line no-console
+  console.error(err);
+  return res.status(500).json({ message: "Server error" });
+};
 
 const router = Router();
 
-/** ---------- POST /api/vendors/apply ----------
- * Body: { userId?: string, userEmail?: string, storeName: string, description?: string }
- * Creates a vendor application (isApproved=false). Upserts if user already has a row.
+/**
+ * POST /api/vendors/apply
+ * Body:
+ * {
+ *   userId?: string,
+ *   email?: string, firstName?: string, lastName?: string, password?: string,
+ *   storeName: string,
+ *   description?: string
+ * }
+ *
+ * If email is provided and user does not exist, we create one automatically.
  */
-const applySchema = z.object({
-  userId: z.string().uuid().optional(),
-  userEmail: z.string().email().optional(),
-  storeName: z.string().min(2, "Store name is required"),
-  description: z.string().optional(),
-});
-router.post("/apply", async (req, res, next) => {
+router.post("/vendors/apply", async (req: Request, res: Response) => {
   try {
-    const body = applySchema.parse(req.body);
+    const {
+      userId,
+      email,
+      firstName = "Vendor",
+      lastName = "User",
+      password,
+      storeName,
+      description = "",
+    } = req.body ?? {};
 
-    // Resolve userId if only email is provided
-    let userId = body.userId ?? null;
-    if (!userId && body.userEmail) {
-      const found = await db.query.users.findFirst({
-        where: eq(users.email, body.userEmail),
+    if (!storeName) return bad(res, "storeName is required");
+
+    let ownerId = userId as string | undefined;
+
+    // If userId not given, try to find or create by email
+    if (!ownerId) {
+      if (!email) return bad(res, "email is required when userId is missing");
+
+      const existing = await db.query.users.findFirst({
+        where: eq(users.email, email),
       });
-      if (!found) return res.status(400).json({ message: "User not found by email" });
-      userId = found.id;
-    }
-    if (!userId) return res.status(400).json({ message: "userId or userEmail is required" });
 
-    // Does this user already have a vendor row?
-    const existing = await db.query.vendors.findFirst({
-      where: eq(vendors.userId, userId),
+      if (existing) {
+        ownerId = existing.id;
+      } else {
+        // Create a minimal user (role defaults to "customer" in the schema)
+        const hashed =
+          password && String(password).length >= 6
+            ? await bcrypt.hash(password, 10)
+            : await bcrypt.hash(crypto.randomUUID(), 10);
+
+        const inserted = await db
+          .insert(users)
+          .values({
+            email,
+            password: hashed,
+            firstName,
+            lastName,
+            // role stays default "customer" — you can change to "vendor" if you want
+          })
+          .returning();
+        ownerId = inserted[0].id;
+      }
+    }
+
+    // If the user already has a vendor, return that vendor
+    const existingVendor = await db.query.vendors.findFirst({
+      where: eq(vendors.userId, ownerId),
     });
+    if (existingVendor) return ok(res, existingVendor);
 
-    if (existing) {
-      const [updated] = await db
-        .update(vendors)
-        .set({
-          storeName: body.storeName,
-          description: body.description ?? existing.description ?? "",
-          isApproved: existing.isApproved ?? false,
-        })
-        .where(eq(vendors.id, existing.id))
-        .returning();
-      return res.json({ vendor: updated, created: false });
-    }
-
-    const [created] = await db
+    const created = await db
       .insert(vendors)
       .values({
-        userId,
-        storeName: body.storeName,
-        description: body.description ?? "",
+        userId: ownerId,
+        storeName,
+        description,
         isApproved: false,
       })
       .returning();
 
-    return res.status(201).json({ vendor: created, created: true });
+    return ok(res, created[0]);
   } catch (err) {
-    next(err);
+    return fail(res, err);
   }
 });
 
-/** ---------- GET /api/vendors/pending ----------
- * List all vendor applications waiting for approval
- */
-router.get("/pending", async (_req, res, next) => {
+/** GET /api/vendors/pending */
+router.get("/vendors/pending", async (_req, res) => {
   try {
     const rows = await db.query.vendors.findMany({
       where: eq(vendors.isApproved, false),
-      with: { user: true },
+      with: {
+        user: true, // join user for email/name in Admin view
+      },
       orderBy: (v, { desc }) => [desc(v.createdAt)],
     });
-    res.json({ vendors: rows });
+    return ok(res, rows);
   } catch (err) {
-    next(err);
+    return fail(res, err);
   }
 });
 
-/** ---------- PATCH /api/vendors/:id/approve ----------
- * Approve a vendor application
- */
-router.patch("/:id/approve", async (req, res, next) => {
+/** PATCH /api/vendors/:id/approve */
+router.patch("/vendors/:id/approve", async (req, res) => {
   try {
-    const id = String(req.params.id);
-    const [updated] = await db
+    const { id } = req.params;
+    const updated = await db
       .update(vendors)
       .set({ isApproved: true })
       .where(eq(vendors.id, id))
       .returning();
-    if (!updated) return res.status(404).json({ message: "Vendor not found" });
-    res.json({ vendor: updated });
+    if (!updated.length) return notFound(res, "Vendor not found");
+    return ok(res, updated[0]);
   } catch (err) {
-    next(err);
+    return fail(res, err);
   }
 });
 
-/** ---------- GET /api/vendors/user ----------
- * Query ?id=<userId> or ?email=<email>
- * Returns the vendor row for that user (or null)
- */
-router.get("/user", async (req, res, next) => {
+/** GET /api/vendors/user/:userId */
+router.get("/vendors/user/:userId", async (req, res) => {
   try {
-    const id = req.query.id ? String(req.query.id) : null;
-    const email = req.query.email ? String(req.query.email) : null;
-
-    let userId: string | null = id;
-    if (!userId && email) {
-      const found = await db.query.users.findFirst({
-        where: eq(users.email, email),
-      });
-      userId = found?.id ?? null;
-    }
-    if (!userId) return res.status(400).json({ message: "Provide ?id or ?email" });
-
-    const vendor = await db.query.vendors.findFirst({
-      where: eq(vendors.userId, userId),
+    const row = await db.query.vendors.findFirst({
+      where: eq(vendors.userId, req.params.userId),
     });
-    res.json({ vendor: vendor ?? null });
+    if (!row) return notFound(res, "Vendor not found for user");
+    return ok(res, row);
   } catch (err) {
-    next(err);
+    return fail(res, err);
+  }
+});
+
+/** GET /api/vendors/user?email=... (fallback when you only know the email) */
+router.get("/vendors/user", async (req, res) => {
+  try {
+    const email = String(req.query.email || "");
+    if (!email) return bad(res, "email query param required");
+    const user = await db.query.users.findFirst({
+      where: eq(users.email, email),
+    });
+    if (!user) return notFound(res, "User not found");
+    const row = await db.query.vendors.findFirst({
+      where: eq(vendors.userId, user.id),
+    });
+    if (!row) return notFound(res, "Vendor not found for user");
+    return ok(res, row);
+  } catch (err) {
+    return fail(res, err);
+  }
+});
+
+/** GET /api/vendors  (simple list for Admin widgets) */
+router.get("/vendors", async (_req, res) => {
+  try {
+    const rows = await db.query.vendors.findMany({
+      with: { user: true },
+      orderBy: (v, { desc }) => [desc(v.createdAt)],
+    });
+    return ok(res, rows);
+  } catch (err) {
+    return fail(res, err);
   }
 });
 
