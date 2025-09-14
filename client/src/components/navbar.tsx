@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useAuthStore } from "@/lib/auth";
 import { useCartStore } from "@/lib/cart";
-import { Search, ShoppingCart, Menu } from "lucide-react";
+import { Search, ShoppingCart, Menu, Store } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import site from "@/config/site";
 import { CurrencySwitcher } from "@/components/currency-switcher";
@@ -33,13 +33,18 @@ export function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      {/* min-w-0 prevents children from forcing horizontal scroll on mobile */}
       <div className="container mx-auto px-4 min-w-0">
         <div className="flex h-16 items-center justify-between gap-2">
-          {/* Left: brand text + desktop nav */}
+          {/* Left: brand + desktop nav */}
           <div className="flex items-center gap-4 min-w-0">
             <Link href="/" className="flex items-center gap-2 shrink-0">
-              {/* 🔥 Removed the icon/logo block; text-only brand */}
+              {/* ✅ Store icon badge (restored) */}
+              <div
+                className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center"
+                aria-label="LWG home"
+              >
+                <Store className="h-4 w-4 text-primary-foreground" />
+              </div>
               <span className="text-xl font-bold text-foreground">
                 {site.name}
               </span>
@@ -74,7 +79,6 @@ export function Navbar() {
 
           {/* Right: currency + cart + auth + mobile menu */}
           <div className="flex items-center gap-2 shrink-0">
-            {/* Currency: shown on >= md to keep header tight on very small screens */}
             <div className="hidden md:block">
               <CurrencySwitcher />
             </div>
@@ -133,19 +137,19 @@ export function Navbar() {
                   <Menu className="h-5 w-5" />
                 </Button>
               </SheetTrigger>
-
               <SheetContent side="right" className="w-80">
-                {/* Brand (text only on mobile too) */}
+                {/* Drawer brand (kept the same icon) */}
                 <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+                    <Store className="h-4 w-4 text-primary-foreground" />
+                  </div>
                   <span className="text-xl font-bold">{site.name}</span>
                 </div>
 
-                {/* Currency switcher (mobile) */}
                 <div className="mt-4">
                   <CurrencySwitcher />
                 </div>
 
-                {/* Links */}
                 <nav className="flex flex-col gap-4 mt-6">
                   {navigation.map((item) => (
                     <Link
@@ -157,7 +161,6 @@ export function Navbar() {
                     </Link>
                   ))}
 
-                  {/* Mobile search */}
                   <form onSubmit={handleSearch} className="relative mt-6">
                     <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -169,7 +172,6 @@ export function Navbar() {
                     />
                   </form>
 
-                  {/* Auth quick actions on mobile */}
                   <div className="mt-4 flex gap-2">
                     {isAuthenticated ? (
                       <>

@@ -22,8 +22,8 @@ export function Footer() {
               onError={(e) => {
                 // Fallback to yellow if the blue 404s (e.g., hashed filename mismatch)
                 const img = e.currentTarget;
-                if (img.src !== window.location.origin + site.logoYellow) {
-                  img.src = site.logoYellow;
+                if (img.src !== window.location.origin + site.logoBlue) {
+                  img.src = site.logoBlue;
                 } else {
                   img.style.display = "none"; // hide if even fallback fails
                 }
