@@ -20,13 +20,12 @@ export function Footer() {
               decoding="async"
               className="h-10 w-auto"
               onError={(e) => {
-                // Fallback to yellow if the blue logo 404s (e.g., hashed filename mismatch)
+                // Fallback to yellow if the blue 404s (e.g., hashed filename mismatch)
                 const img = e.currentTarget;
                 if (img.src !== window.location.origin + site.logoYellow) {
                   img.src = site.logoYellow;
                 } else {
-                  // if even the fallback fails, hide the broken image
-                  img.style.display = "none";
+                  img.style.display = "none"; // hide if even fallback fails
                 }
               }}
             />

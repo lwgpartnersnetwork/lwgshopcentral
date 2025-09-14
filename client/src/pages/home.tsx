@@ -16,7 +16,6 @@ import {
   ArrowRight,
   Tag,
 } from "lucide-react";
-import { site } from "@/config/site";
 
 /* ----------------------------- Types ----------------------------- */
 type ApiCategory = {
@@ -163,23 +162,7 @@ export default function Home() {
               <ArrowRight className="ml-2 h-4 w-4" />
             </Link>
           </Button>
-
-          {/* LWG blue logo under hero with fallback to yellow */}
-          <img
-            src={site.logoBlue}
-            alt="LWG Partners Network"
-            className="mx-auto mt-8 h-10 md:h-12 w-auto"
-            loading="lazy"
-            decoding="async"
-            onError={(e) => {
-              const img = e.currentTarget;
-              if (img.src !== window.location.origin + site.logoYellow) {
-                img.src = site.logoYellow;
-              } else {
-                img.style.display = "none";
-              }
-            }}
-          />
+          {/* (Removed the centered logo under the CTA) */}
         </div>
       </section>
 
