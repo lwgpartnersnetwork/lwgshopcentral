@@ -19,7 +19,7 @@ import AdminDashboard from "@/pages/admin-dashboard";
 import Categories from "@/pages/categories";
 import Support from "@/pages/support";
 import BecomeVendor from "@/pages/become-vendor";
-import Checkout from "@/pages/checkout"; // ✅ added
+import Checkout from "@/pages/checkout";
 import NotFound from "@/pages/not-found";
 
 // --- Debug helper so we can see which route rendered ---
@@ -72,10 +72,18 @@ function Router() {
         </>
       </Route>
 
-      {/* TEMP: public admin page so you can see it now */}
+      {/* Admin dashboard (original path) */}
       <Route path="/admin-dashboard">
         <>
           <RouteProbe tag="admin-dashboard" />
+          <AdminDashboard />
+        </>
+      </Route>
+
+      {/* ✅ Admin alias so /admin also works */}
+      <Route path="/admin">
+        <>
+          <RouteProbe tag="admin (alias)" />
           <AdminDashboard />
         </>
       </Route>
@@ -101,7 +109,7 @@ function Router() {
         </>
       </Route>
 
-      {/* ✅ Checkout route */}
+      {/* Checkout */}
       <Route path="/checkout">
         <>
           <RouteProbe tag="checkout" />

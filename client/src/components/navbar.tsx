@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useAuthStore } from "@/lib/auth";
 import { useCartStore } from "@/lib/cart";
-import { Search, ShoppingCart, Menu, Store } from "lucide-react";
+import { Search, ShoppingCart, Menu } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import site from "@/config/site";
 import { CurrencySwitcher } from "@/components/currency-switcher";
@@ -36,12 +36,10 @@ export function Navbar() {
       {/* min-w-0 prevents children from forcing horizontal scroll on mobile */}
       <div className="container mx-auto px-4 min-w-0">
         <div className="flex h-16 items-center justify-between gap-2">
-          {/* Left: logo + desktop nav */}
+          {/* Left: brand text + desktop nav */}
           <div className="flex items-center gap-4 min-w-0">
             <Link href="/" className="flex items-center gap-2 shrink-0">
-              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                <Store className="h-4 w-4 text-primary-foreground" />
-              </div>
+              {/* 🔥 Removed the icon/logo block; text-only brand */}
               <span className="text-xl font-bold text-foreground">
                 {site.name}
               </span>
@@ -76,7 +74,7 @@ export function Navbar() {
 
           {/* Right: currency + cart + auth + mobile menu */}
           <div className="flex items-center gap-2 shrink-0">
-            {/* Currency: visible on >= md to keep header narrow on very small screens */}
+            {/* Currency: shown on >= md to keep header tight on very small screens */}
             <div className="hidden md:block">
               <CurrencySwitcher />
             </div>
@@ -137,11 +135,8 @@ export function Navbar() {
               </SheetTrigger>
 
               <SheetContent side="right" className="w-80">
-                {/* Brand */}
+                {/* Brand (text only on mobile too) */}
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                    <Store className="h-4 w-4 text-primary-foreground" />
-                  </div>
                   <span className="text-xl font-bold">{site.name}</span>
                 </div>
 
