@@ -7,22 +7,24 @@ import express, {
 } from "express";
 import path from "node:path";
 import fs from "node:fs";
+import { createServer } from "node:http";
 import cors from "cors";
 import helmet from "helmet";
-import { createServer } from "node:http";
 
 import { env } from "./env";
 import { setupVite, serveStatic, log } from "./vite";
 
-// ✅ default imports (see router files below)
-import catalogRouter from "./routes/catalog";
-import checkoutRouter from "./routes/checkout";
+// Routers
+import vendorsRouter from "./routes/vendors"; // /api/vendors/*
+import catalogRouter from "./routes/catalog"; // /api/categories, /api/products, /api/orders/vendor/:id
+import checkoutRouter from "./routes/checkout"; // /api/checkout/*
 
-const app = express(); // ← MUST come before any app.use
+const app = express();
 
-// ---------- middleware ----------
+/* ------------------------- Middleware ------------------------- */
 app.set("trust proxy", 1);
 app.disable("x-powered-by");
+
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: false }));
 
@@ -39,47 +41,57 @@ app.use(
 );
 app.use(helmet());
 
-// tiny API logger
+// Tiny API logger
 app.use("/api", (req, res, next) => {
-  const started = Date.now();
+  const t0 = Date.now();
   res.on("finish", () => {
     log(
-      `${req.method} ${req.originalUrl} ${res.statusCode} in ${Date.now() - started}ms`,
+      `${req.method} ${req.originalUrl} ${res.statusCode} in ${Date.now() - t0}ms`,
     );
   });
   next();
 });
 
-// ---------- health ----------
+/* --------------------------- Health --------------------------- */
 app.get("/api/health", (_req: Request, res: Response) => {
   res.json({ status: "ok" });
 });
 
-// ---------- ROUTES ----------
-app.use("/api", catalogRouter); // /api/categories, /api/vendors, /api/products, /api/orders/vendor/:id
+/* ---------------------------- Routes -------------------------- */
+// Important: mount vendors first so /api/vendors is handled here
+app.use("/api/vendors", vendorsRouter);
+
+// Catalog: categories, products, orders listing for vendor
+app.use("/api", catalogRouter);
+
+// Checkout: order creation + notifications
 app.use("/api/checkout", checkoutRouter);
 
-// JSON 404 for unknown API routes
+/* --------------------------- 404 JSON ------------------------- */
 app.use("/api", (_req, res) => res.status(404).json({ message: "Not Found" }));
 
-// centralized API error handler
+/* ----------------------- Error handling ----------------------- */
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   const status = Number(err?.status || err?.statusCode || 500);
   const message = String(err?.message || "Internal Server Error");
   try {
+    // eslint-disable-next-line no-console
     console.error(err);
   } catch {}
   res.status(status).json({ message });
 });
 
-// ---------- start ----------
+/* ---------------------------- Start --------------------------- */
 (async () => {
   const server = createServer(app);
 
   if (app.get("env") === "development") {
     await setupVite(app, server);
   } else {
+    // Serve built client (dist/public)
     serveStatic(app);
+
+    // SPA fallback for non-API routes
     const indexFile = path.resolve(process.cwd(), "dist/public/index.html");
     app.get("*", (req, res, next) => {
       if (req.path.startsWith("/api")) return next();
