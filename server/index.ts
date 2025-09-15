@@ -1,3 +1,4 @@
+// server/index.ts
 import "dotenv/config";
 import express, {
   type Request,
@@ -16,7 +17,8 @@ import { setupVite, serveStatic, log } from "./vite";
 import catalogRouter from "./routes/catalog";
 import checkoutRouter from "./routes/checkout";
 import vendorsRouter from "./routes/vendors";
-import vendorRequestsRouter from "./routes/vendor-requests"; // <— compat
+import vendorRequestsRouter from "./routes/vendor-requests"; // compat for older UI
+import adminRouter from "./routes/admin"; // ✅ NEW: flexible vendor approval routes
 
 const app = express();
 
@@ -29,19 +31,23 @@ const corsOrigins = (env.CORS_ORIGINS || "")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
+
 app.use(
-  cors({ origin: corsOrigins.length ? corsOrigins : true, credentials: true }),
+  cors({
+    origin: corsOrigins.length ? corsOrigins : true,
+    credentials: true,
+  }),
 );
 app.use(helmet());
 
-// tiny log
+// tiny API logger
 app.use("/api", (req, res, next) => {
   const t = Date.now();
-  res.on("finish", () =>
+  res.on("finish", () => {
     log(
       `${req.method} ${req.originalUrl} ${res.statusCode} in ${Date.now() - t}ms`,
-    ),
-  );
+    );
+  });
   next();
 });
 
@@ -52,12 +58,13 @@ app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
 app.use("/api", catalogRouter);
 app.use("/api/checkout", checkoutRouter);
 app.use("/api/vendors", vendorsRouter);
-app.use("/api/vendor-requests", vendorRequestsRouter); // <— compat path for Admin
+app.use("/api/vendor-requests", vendorRequestsRouter); // compat path for Admin
+app.use("/api", adminRouter); // ✅ NEW: exposes /api/admin/vendors/* and /api/vendors/:id/approve|reject aliases
 
 // 404 for API
 app.use("/api", (_req, res) => res.status(404).json({ message: "Not Found" }));
 
-// error handler
+// centralized error handler
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   const status = Number(err?.status || err?.statusCode || 500);
   const message = String(err?.message || "Internal Server Error");
@@ -67,7 +74,6 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   res.status(status).json({ message });
 });
 
-// start
 (async () => {
   const server = createServer(app);
 
@@ -75,6 +81,7 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     await setupVite(app, server);
   } else {
     serveStatic(app);
+    // SPA fallback for non-/api routes
     const indexFile = path.resolve(process.cwd(), "dist/public/index.html");
     app.get("*", (req, res, next) => {
       if (req.path.startsWith("/api")) return next();
@@ -84,7 +91,7 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   }
 
   const port = Number(env.PORT || 5000);
-  server.listen({ port, host: "0.0.0.0", reusePort: true }, () =>
-    log(`serving on port ${port}`),
-  );
+  server.listen({ port, host: "0.0.0.0", reusePort: true }, () => {
+    log(`serving on port ${port}`);
+  });
 })();
