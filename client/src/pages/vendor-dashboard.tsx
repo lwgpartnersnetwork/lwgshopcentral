@@ -1,5 +1,5 @@
 // client/src/pages/vendor-dashboard.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -8,29 +8,15 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
+  Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 
@@ -39,38 +25,70 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { insertProductSchema } from "@shared/schema";
 import {
-  Plus,
-  Package,
-  Clock,
-  DollarSign,
-  Star,
-  Edit,
-  Trash2,
-  Store,
-  CheckCircle2,
-  XCircle,
-  Loader2,
+  Plus, Package, Clock, DollarSign, Star, Edit, Trash2, Store,
+  CheckCircle2, XCircle, Loader2,
 } from "lucide-react";
 
 /* ---------------- helpers ---------------- */
-const API_BASE =
-  (import.meta.env.VITE_API_URL as string | undefined) || ""; // same-origin fallback
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) || "";
 
+// fetch with readable errors
 async function fetchJSON<T = any>(url: string): Promise<T> {
   const res = await fetch(url, { credentials: "include" });
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
-    try {
-      const t = await res.text();
-      if (t) msg = t;
-    } catch {}
+    try { const t = await res.text(); if (t) msg = t; } catch {}
     throw new Error(msg);
   }
+  try { return await res.json(); } catch { return {} as T; }
+}
+
+// normalize a vendor object from various backends
+function normalizeVendor(v: any) {
+  if (!v) return null;
+  const isApproved =
+    typeof v.isApproved === "boolean" ? v.isApproved
+    : typeof v.is_approved === "boolean" ? v.is_approved
+    : v.status === "approved" || v.approved === true;
+
+  return {
+    id: String(v.id ?? ""),
+    userId: v.userId ?? v.user_id ?? null,
+    storeName: v.storeName ?? v.store_name ?? "Vendor",
+    isApproved: !!isApproved,
+    createdAt: v.createdAt ?? v.created_at ?? null,
+    email: v.email ?? v.contact_email ?? null,
+  } as Vendor;
+}
+
+// robust “get vendor by id” for admin view
+async function fetchVendorByIdRobust(vendorId: string): Promise<Vendor> {
+  // 1) admin detail endpoint
   try {
-    return await res.json();
-  } catch {
-    return {} as T;
-  }
+    const a = await fetchJSON<any>(`${API_BASE}/api/admin/vendors/${vendorId}`);
+    const v = a?.vendor ?? a;
+    const norm = normalizeVendor(v);
+    if (norm?.id) return norm;
+  } catch {}
+
+  // 2) public/detail endpoint
+  try {
+    const b = await fetchJSON<any>(`${API_BASE}/api/vendors/${vendorId}`);
+    const v = b?.vendor ?? b;
+    const norm = normalizeVendor(v);
+    if (norm?.id) return norm;
+  } catch {}
+
+  // 3) admin list -> find locally
+  try {
+    const list = await fetchJSON<any>(`${API_BASE}/api/admin/vendors`);
+    const arr = Array.isArray(list?.vendors) ? list.vendors : Array.isArray(list) ? list : [];
+    const found = arr.find((x: any) => String(x.id) === String(vendorId));
+    const norm = normalizeVendor(found);
+    if (norm?.id) return norm;
+  } catch {}
+
+  throw new Error("Vendor not found");
 }
 
 /** ---------- Types ---------- */
@@ -107,10 +125,7 @@ type Product = {
 
 /** ---------- Form Schema (UI strings -> server numbers) ---------- */
 const productFormSchema = insertProductSchema
-  .extend({
-    price: z.string().min(1, "Price is required"),
-    stock: z.string().min(1, "Stock is required"),
-  })
+  .extend({ price: z.string().min(1), stock: z.string().min(1) })
   .partial({ vendorId: true, categoryId: true });
 
 type ProductForm = z.infer<typeof productFormSchema>;
@@ -121,15 +136,14 @@ export default function VendorDashboard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Admin "view as vendor" (read-only) via ?vendorId=...
-  const asVendorId = useMemo(() => {
-    if (typeof window === "undefined") return null;
-    const v = new URLSearchParams(window.location.search).get("vendorId");
-    return v ? String(v) : null;
-  }, []);
+  // Admin "view as vendor" (read-only)
+  const asVendorId =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("vendorId")
+      : null;
   const viewMode = !!asVendorId;
 
-  /** ---------- Auth hint ---------- */
+  // gentle reminder for unauthenticated vendor access
   useEffect(() => {
     if (!isAuthenticated && !viewMode) {
       toast({
@@ -145,31 +159,13 @@ export default function VendorDashboard() {
     queryKey: viewMode ? ["vendor-by-id", asVendorId] : ["vendor-by-user", user?.id],
     enabled: viewMode ? !!asVendorId : !!user?.id,
     queryFn: async () => {
-      const url = viewMode
-        ? `${API_BASE}/api/vendors/${asVendorId}`
-        : `${API_BASE}/api/vendors/user/${user!.id}`;
-
-      const raw = await fetchJSON<any>(url);
-      const v = raw?.vendor ?? raw;
-
-      const isApproved =
-        typeof v?.isApproved === "boolean"
-          ? v.isApproved
-          : typeof v?.is_approved === "boolean"
-          ? v.is_approved
-          : v?.status === "approved";
-
-      const vendor: Vendor = {
-        id: String(v?.id ?? ""),
-        userId: v?.userId ?? v?.user_id ?? null,
-        storeName: v?.storeName ?? v?.store_name ?? "Vendor",
-        isApproved: !!isApproved,
-        createdAt: v?.createdAt ?? v?.created_at ?? null,
-        email: v?.email ?? v?.contact_email ?? null,
-      };
-
-      if (!vendor.id) throw new Error("Vendor not found");
-      return vendor;
+      if (viewMode) {
+        return fetchVendorByIdRobust(asVendorId!);
+      }
+      const raw = await fetchJSON<any>(`${API_BASE}/api/vendors/user/${user!.id}`);
+      const v = normalizeVendor(raw?.vendor ?? raw);
+      if (!v?.id) throw new Error("Vendor not found for this user");
+      return v;
     },
     retry: false,
   });
@@ -180,9 +176,7 @@ export default function VendorDashboard() {
     queryKey: ["products-by-vendor", vendor?.id],
     enabled: !!vendor?.id,
     queryFn: async () => {
-      const list = await fetchJSON<any[]>(
-        `${API_BASE}/api/products?vendorId=${vendor!.id}`,
-      );
+      const list = await fetchJSON<any[]>(`${API_BASE}/api/products?vendorId=${vendor!.id}`);
       return (list ?? []).map((p) => ({
         id: String(p.id),
         vendorId: String(p.vendorId ?? p.vendor_id ?? vendor!.id),
@@ -202,9 +196,7 @@ export default function VendorDashboard() {
     queryKey: ["orders-by-vendor", vendor?.id],
     enabled: !!vendor?.id,
     queryFn: async () => {
-      const list = await fetchJSON<any[]>(
-        `${API_BASE}/api/orders/vendor/${vendor!.id}`,
-      );
+      const list = await fetchJSON<any[]>(`${API_BASE}/api/orders/vendor/${vendor!.id}`);
       return (list ?? []).map((o) => ({
         id: String(o.id),
         vendorId: String(o.vendorId ?? o.vendor_id ?? vendor!.id),
@@ -223,27 +215,17 @@ export default function VendorDashboard() {
   const form = useForm<ProductForm>({
     resolver: zodResolver(productFormSchema),
     defaultValues: {
-      vendorId: "",
-      categoryId: "",
-      name: "",
-      description: "",
-      price: "",
-      stock: "",
-      imageUrl: "",
+      vendorId: "", categoryId: "", name: "", description: "",
+      price: "", stock: "", imageUrl: "",
     },
   });
 
-  // When vendor loads, inject vendorId into the form defaults
+  // inject vendorId once loaded
   useEffect(() => {
     if (vendor?.id) {
       form.reset({
-        vendorId: vendor.id,
-        categoryId: "",
-        name: "",
-        description: "",
-        price: "",
-        stock: "",
-        imageUrl: "",
+        vendorId: vendor.id, categoryId: "", name: "", description: "",
+        price: "", stock: "", imageUrl: "",
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -261,18 +243,11 @@ export default function VendorDashboard() {
       await apiRequest("POST", "/api/products", payload);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["products-by-vendor", vendor?.id],
-      });
+      queryClient.invalidateQueries({ queryKey: ["products-by-vendor", vendor?.id] });
       setIsProductDialogOpen(false);
       form.reset({
-        vendorId: vendor?.id ?? "",
-        categoryId: "",
-        name: "",
-        description: "",
-        price: "",
-        stock: "",
-        imageUrl: "",
+        vendorId: vendor?.id ?? "", categoryId: "", name: "", description: "",
+        price: "", stock: "", imageUrl: "",
       });
       toast({ title: "Product created successfully" });
     },
@@ -290,23 +265,17 @@ export default function VendorDashboard() {
       await apiRequest("DELETE", `/api/products/${productId}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["products-by-vendor", vendor?.id],
-      });
+      queryClient.invalidateQueries({ queryKey: ["products-by-vendor", vendor?.id] });
       toast({ title: "Product deleted successfully" });
     },
     onError: () => {
-      toast({
-        title: "Failed to delete product",
-        variant: "destructive",
-      });
+      toast({ title: "Failed to delete product", variant: "destructive" });
     },
   });
 
   /** ---------- Derived stats ---------- */
   const totalProducts = products.length;
   const pendingOrders = orders.filter((o) => o.status === "pending").length;
-
   const now = new Date();
   const monthlyRevenue = orders
     .filter((o) => {
@@ -315,7 +284,7 @@ export default function VendorDashboard() {
     })
     .reduce((sum, o) => sum + Number(o.total || 0), 0);
 
-  // Only real vendor can manage (admin "view as" is read-only)
+  // Only real vendor can manage (admin “view as” is read-only)
   const canManage = !!vendor?.isApproved && !viewMode;
 
   /** ---------- UI ---------- */
@@ -323,18 +292,12 @@ export default function VendorDashboard() {
     <div className="container mx-auto px-4 py-8">
       {/* Header */}
       <div className="mb-6">
-        <h1
-          className="text-3xl font-bold flex items-center gap-2"
-          data-testid="text-dashboard-title"
-        >
+        <h1 className="text-3xl font-bold flex items-center gap-2" data-testid="text-dashboard-title">
           <Store className="h-7 w-7" /> Vendor Dashboard
         </h1>
-        <p className="text-muted-foreground">
-          Manage your products, orders, and store performance
-        </p>
+        <p className="text-muted-foreground">Manage your products, orders, and store performance</p>
       </div>
 
-      {/* Read-only banner for admin view */}
       {viewMode && (
         <div className="mb-4">
           <Badge variant="secondary">Admin view — read-only</Badge>
@@ -374,69 +337,55 @@ export default function VendorDashboard() {
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Total Products</p>
-                <p className="text-2xl font-bold" data-testid="text-total-products">
-                  {totalProducts}
-                </p>
-              </div>
-              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
-                <Package className="h-6 w-6 text-primary" />
-              </div>
+        <Card><CardContent className="p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-muted-foreground">Total Products</p>
+              <p className="text-2xl font-bold" data-testid="text-total-products">{totalProducts}</p>
             </div>
-          </CardContent>
-        </Card>
+            <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
+              <Package className="h-6 w-6 text-primary" />
+            </div>
+          </div>
+        </CardContent></Card>
 
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Pending Orders</p>
-                <p className="text-2xl font-bold" data-testid="text-pending-orders">
-                  {pendingOrders}
-                </p>
-              </div>
-              <div className="w-12 h-12 bg-accent/10 rounded-full flex items-center justify-center">
-                <Clock className="h-6 w-6 text-accent" />
-              </div>
+        <Card><CardContent className="p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-muted-foreground">Pending Orders</p>
+              <p className="text-2xl font-bold" data-testid="text-pending-orders">{pendingOrders}</p>
             </div>
-          </CardContent>
-        </Card>
+            <div className="w-12 h-12 bg-accent/10 rounded-full flex items-center justify-center">
+              <Clock className="h-6 w-6 text-accent" />
+            </div>
+          </div>
+        </CardContent></Card>
 
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Monthly Revenue</p>
-                <p className="text-2xl font-bold" data-testid="text-monthly-revenue">
-                  ${monthlyRevenue.toFixed(2)}
-                </p>
-              </div>
-              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
-                <DollarSign className="h-6 w-6 text-primary" />
-              </div>
+        <Card><CardContent className="p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-muted-foreground">Monthly Revenue</p>
+              <p className="text-2xl font-bold" data-testid="text-monthly-revenue">
+                ${monthlyRevenue.toFixed(2)}
+              </p>
             </div>
-          </CardContent>
-        </Card>
+            <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
+              <DollarSign className="h-6 w-6 text-primary" />
+            </div>
+          </div>
+        </CardContent></Card>
 
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Store Rating</p>
-                <p className="text-2xl font-bold" data-testid="text-store-rating">
-                  4.8
-                </p>
-              </div>
-              <div className="w-12 h-12 bg-accent/10 rounded-full flex items-center justify-center">
-                <Star className="h-6 w-6 text-accent" />
-              </div>
+        <Card><CardContent className="p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-muted-foreground">Store Rating</p>
+              <p className="text-2xl font-bold" data-testid="text-store-rating">4.8</p>
             </div>
-          </CardContent>
-        </Card>
+            <div className="w-12 h-12 bg-accent/10 rounded-full flex items-center justify-center">
+              <Star className="h-6 w-6 text-accent" />
+            </div>
+          </div>
+        </CardContent></Card>
       </div>
 
       {/* Actions */}
@@ -444,14 +393,11 @@ export default function VendorDashboard() {
         <Dialog open={isProductDialogOpen} onOpenChange={setIsProductDialogOpen}>
           <DialogTrigger asChild>
             <Button data-testid="button-add-product" disabled={!canManage}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add New Product
+              <Plus className="mr-2 h-4 w-4" /> Add New Product
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Add New Product</DialogTitle>
-            </DialogHeader>
+            <DialogHeader><DialogTitle>Add New Product</DialogTitle></DialogHeader>
 
             {!canManage && (
               <div className="mb-4">
@@ -465,13 +411,13 @@ export default function VendorDashboard() {
               <form
                 onSubmit={form.handleSubmit((data) => {
                   if (!canManage) {
-                    return toast({
+                    toast({
                       title: "Not allowed",
-                      description: viewMode
-                        ? "You’re viewing this store in read-only mode."
+                      description: viewMode ? "You’re viewing this store in read-only mode."
                         : "An admin must approve your store before adding products.",
                       variant: "destructive",
                     });
+                    return;
                   }
                   createProductMutation.mutate(data);
                 })}
@@ -484,18 +430,12 @@ export default function VendorDashboard() {
                     <FormItem>
                       <FormLabel>Product Name</FormLabel>
                       <FormControl>
-                        <Input
-                          placeholder="Enter product name"
-                          {...field}
-                          data-testid="input-product-name"
-                          disabled={!canManage}
-                        />
+                        <Input placeholder="Enter product name" {...field} disabled={!canManage} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-
                 <FormField
                   control={form.control}
                   name="description"
@@ -503,18 +443,12 @@ export default function VendorDashboard() {
                     <FormItem>
                       <FormLabel>Description</FormLabel>
                       <FormControl>
-                        <Textarea
-                          placeholder="Enter product description"
-                          {...field}
-                          data-testid="input-product-description"
-                          disabled={!canManage}
-                        />
+                        <Textarea placeholder="Enter product description" {...field} disabled={!canManage} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-
                 <div className="grid grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
@@ -523,20 +457,12 @@ export default function VendorDashboard() {
                       <FormItem>
                         <FormLabel>Price ($)</FormLabel>
                         <FormControl>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            placeholder="0.00"
-                            {...field}
-                            data-testid="input-product-price"
-                            disabled={!canManage}
-                          />
+                          <Input type="number" step="0.01" placeholder="0.00" {...field} disabled={!canManage} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-
                   <FormField
                     control={form.control}
                     name="stock"
@@ -544,20 +470,13 @@ export default function VendorDashboard() {
                       <FormItem>
                         <FormLabel>Stock Quantity</FormLabel>
                         <FormControl>
-                          <Input
-                            type="number"
-                            placeholder="0"
-                            {...field}
-                            data-testid="input-product-stock"
-                            disabled={!canManage}
-                          />
+                          <Input type="number" placeholder="0" {...field} disabled={!canManage} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
                 </div>
-
                 <FormField
                   control={form.control}
                   name="imageUrl"
@@ -565,12 +484,7 @@ export default function VendorDashboard() {
                     <FormItem>
                       <FormLabel>Image URL</FormLabel>
                       <FormControl>
-                        <Input
-                          placeholder="https://example.com/image.jpg"
-                          {...field}
-                          data-testid="input-product-image"
-                          disabled={!canManage}
-                        />
+                        <Input placeholder="https://example.com/image.jpg" {...field} disabled={!canManage} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -578,19 +492,10 @@ export default function VendorDashboard() {
                 />
 
                 <div className="flex justify-end gap-3">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setIsProductDialogOpen(false)}
-                    data-testid="button-cancel"
-                  >
+                  <Button type="button" variant="outline" onClick={() => setIsProductDialogOpen(false)}>
                     Cancel
                   </Button>
-                  <Button
-                    type="submit"
-                    disabled={createProductMutation.isPending || !canManage}
-                    data-testid="button-create-product"
-                  >
+                  <Button type="submit" disabled={createProductMutation.isPending || !canManage}>
                     {createProductMutation.isPending ? "Creating..." : "Create Product"}
                   </Button>
                 </div>
@@ -599,16 +504,12 @@ export default function VendorDashboard() {
           </DialogContent>
         </Dialog>
 
-        <Button variant="outline" data-testid="button-analytics">
-          View Analytics
-        </Button>
+        <Button variant="outline">View Analytics</Button>
       </div>
 
       {/* Products Table */}
       <Card className="mb-8">
-        <CardHeader>
-          <CardTitle>Your Products</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle>Your Products</CardTitle></CardHeader>
         <CardContent>
           {productsQuery.isLoading ? (
             <div className="text-sm text-muted-foreground">Loading products…</div>
@@ -627,28 +528,23 @@ export default function VendorDashboard() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {products.map((product) => {
-                    const displayName = product.name ?? product.title ?? "(no name)";
-                    const price = Number(product.price ?? 0);
-                    const stock = product.stock ?? 0;
-                    const img = product.imageUrl || "";
-                    const desc = product.description ? String(product.description) : "";
-
+                  {products.map((p) => {
+                    const name = p.name ?? p.title ?? "(no name)";
+                    const price = Number(p.price ?? 0);
+                    const stock = p.stock ?? 0;
+                    const img = p.imageUrl || "";
+                    const desc = p.description ? String(p.description) : "";
                     return (
-                      <TableRow key={product.id} data-testid={`row-product-${product.id}`}>
+                      <TableRow key={p.id}>
                         <TableCell>
                           <div className="flex items-center space-x-3">
                             {img ? (
-                              <img
-                                src={img}
-                                alt={displayName}
-                                className="w-12 h-12 object-cover rounded-lg"
-                              />
+                              <img src={img} alt={name} className="w-12 h-12 object-cover rounded-lg" />
                             ) : (
                               <div className="w-12 h-12 rounded-lg bg-muted" />
                             )}
                             <div>
-                              <p className="font-medium">{displayName}</p>
+                              <p className="font-medium">{name}</p>
                               {desc && (
                                 <p className="text-sm text-muted-foreground">
                                   {desc.length > 50 ? `${desc.slice(0, 50)}…` : desc}
@@ -660,19 +556,13 @@ export default function VendorDashboard() {
                         <TableCell className="font-medium">${price.toFixed(2)}</TableCell>
                         <TableCell>{String(stock)}</TableCell>
                         <TableCell>
-                          <Badge variant={product.isActive ? "secondary" : "destructive"}>
-                            {product.isActive ? "Active" : "Inactive"}
+                          <Badge variant={p.isActive ? "secondary" : "destructive"}>
+                            {p.isActive ? "Active" : "Inactive"}
                           </Badge>
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              data-testid={`button-edit-${product.id}`}
-                              disabled={!canManage}
-                              title={canManage ? "Edit" : "Read-only"}
-                            >
+                            <Button variant="ghost" size="sm" disabled={!canManage} title={canManage ? "Edit" : "Read-only"}>
                               <Edit className="h-4 w-4" />
                             </Button>
                             <Button
@@ -682,19 +572,16 @@ export default function VendorDashboard() {
                                 if (!canManage) {
                                   toast({
                                     title: "Read-only",
-                                    description: viewMode
-                                      ? "Admin view is read-only."
-                                      : "Your store must be approved first.",
+                                    description: viewMode ? "Admin view is read-only." : "Your store must be approved.",
                                     variant: "destructive",
                                   });
                                   return;
                                 }
                                 if (confirm("Delete this product?")) {
-                                  deleteProductMutation.mutate(product.id);
+                                  deleteProductMutation.mutate(p.id);
                                 }
                               }}
                               className="text-destructive hover:text-destructive"
-                              data-testid={`button-delete-${product.id}`}
                               disabled={!canManage || deleteProductMutation.isPending}
                               title={canManage ? "Delete" : "Read-only"}
                             >
@@ -714,9 +601,7 @@ export default function VendorDashboard() {
 
       {/* Orders Table */}
       <Card>
-        <CardHeader>
-          <CardTitle>Recent Orders</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle>Recent Orders</CardTitle></CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
             <Table>
@@ -730,39 +615,22 @@ export default function VendorDashboard() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(orders ?? []).slice(0, 10).map((order) => (
-                  <TableRow key={order.id} data-testid={`row-order-${order.id}`}>
-                    <TableCell className="font-mono text-sm">
-                      #{order.id.substring(0, 8)}
-                    </TableCell>
-                    <TableCell>{order.customerId}</TableCell>
-                    <TableCell className="font-medium">
-                      ${Number(order.total || 0).toFixed(2)}
-                    </TableCell>
+                {(orders ?? []).slice(0, 10).map((o) => (
+                  <TableRow key={o.id}>
+                    <TableCell className="font-mono text-sm">#{o.id.substring(0, 8)}</TableCell>
+                    <TableCell>{o.customerId}</TableCell>
+                    <TableCell className="font-medium">${Number(o.total || 0).toFixed(2)}</TableCell>
                     <TableCell>
-                      <Badge
-                        variant={
-                          order.status === "delivered"
-                            ? "secondary"
-                            : order.status === "pending"
-                            ? "destructive"
-                            : "default"
-                        }
-                      >
-                        {order.status}
+                      <Badge variant={o.status === "delivered" ? "secondary" : o.status === "pending" ? "destructive" : "default"}>
+                        {o.status}
                       </Badge>
                     </TableCell>
-                    <TableCell>
-                      {new Date(order.createdAt).toLocaleDateString()}
-                    </TableCell>
+                    <TableCell>{new Date(o.createdAt).toLocaleDateString()}</TableCell>
                   </TableRow>
                 ))}
-
                 {!orders?.length && (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-sm text-muted-foreground">
-                      No orders yet.
-                    </TableCell>
+                    <TableCell colSpan={5} className="text-sm text-muted-foreground">No orders yet.</TableCell>
                   </TableRow>
                 )}
               </TableBody>
