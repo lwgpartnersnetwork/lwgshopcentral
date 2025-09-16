@@ -29,24 +29,61 @@ type Product = {
 };
 
 /* ---------- Helpers ---------- */
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) || "";
 const toNumber = (v: unknown, fallback = 0) => {
   const n = typeof v === "number" ? v : parseFloat(String(v ?? ""));
   return Number.isFinite(n) ? n : fallback;
 };
+async function fetchJSON<T>(url: string): Promise<T> {
+  const res = await fetch(url, { credentials: "include" });
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try {
+      msg = (await res.text()) || msg;
+    } catch {}
+    throw new Error(msg);
+  }
+  return res.json();
+}
 
 export default function ProductDetails() {
   const { id } = useParams<{ id: string }>();
   const { addItem } = useCartStore();
   const { toast } = useToast();
 
-  const { data: product, isLoading, isError } = useQuery<Product | null>({
+  const {
+    data: product,
+    isLoading,
+    isError,
+  } = useQuery<Product | null>({
     queryKey: ["/api/products", id],
     enabled: !!id,
+    queryFn: async () => {
+      // Prefer item endpoint; if your API only supports /api/products?id=, swap accordingly.
+      const raw: any = await fetchJSON(
+        `${API_BASE}/api/products/${encodeURIComponent(id!)}`
+      );
+      // Normalize common alt field names
+      const p = raw?.product ?? raw;
+      if (!p) return null;
+      return {
+        id: String(p.id),
+        name: p.name ?? p.title ?? "",
+        title: p.title ?? p.name ?? "",
+        imageUrl: p.imageUrl ?? p.image_url ?? null,
+        price: p.price,
+        stock: p.stock ?? p.quantity ?? 0,
+        description: p.description ?? "",
+        createdAt: p.createdAt ?? p.created_at,
+        isActive:
+          typeof p.isActive === "boolean" ? p.isActive : !!p.is_active,
+      } as Product;
+    },
   });
 
   const handleAddToCart = () => {
     if (!product) return;
-    addItem(product as any); // cart store accepts the product shape already
+    addItem(product as any);
     toast({
       title: "Added to cart",
       description: `${product.name ?? product.title ?? "Item"} added to your cart`,
@@ -130,7 +167,10 @@ export default function ProductDetails() {
         {/* Product Info */}
         <div className="space-y-6">
           <div>
-            <h1 className="mb-4 text-3xl font-bold" data-testid="text-product-title">
+            <h1
+              className="mb-4 text-3xl font-bold"
+              data-testid="text-product-title"
+            >
               {displayName}
             </h1>
 
@@ -151,7 +191,10 @@ export default function ProductDetails() {
             </div>
 
             <div className="mb-6 flex items-center space-x-4">
-              <span className="text-4xl font-bold text-primary" data-testid="text-price">
+              <span
+                className="text-4xl font-bold text-primary"
+                data-testid="text-price"
+              >
                 ${price.toFixed(2)}
               </span>
               <Badge
