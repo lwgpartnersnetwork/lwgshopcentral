@@ -654,7 +654,7 @@ export default function AdminDashboard() {
           <CardHeader>
             <CardTitle>Order Statistics</CardTitle>
           </CardHeader>
-          <CardContent>
+        <CardContent>
             {ordersQuery.isLoading ? (
               Loading
             ) : ordersQuery.isError ? (

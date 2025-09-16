@@ -62,11 +62,15 @@ async function fetchJSON<T = any>(url: string): Promise<T> {
     let msg = `HTTP ${res.status}`;
     try {
       const t = await res.text();
-      msg = t || msg;
+      if (t) msg = t;
     } catch {}
     throw new Error(msg);
   }
-  return res.json();
+  try {
+    return await res.json();
+  } catch {
+    return {} as T;
+  }
 }
 
 /** ---------- Types ---------- */
@@ -117,11 +121,12 @@ export default function VendorDashboard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // ✅ Admin "view as vendor" (read-only) via ?vendorId=...
-  const asVendorId =
-    typeof window !== "undefined"
-      ? new URLSearchParams(window.location.search).get("vendorId")
-      : null;
+  // Admin "view as vendor" (read-only) via ?vendorId=...
+  const asVendorId = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    const v = new URLSearchParams(window.location.search).get("vendorId");
+    return v ? String(v) : null;
+  }, []);
   const viewMode = !!asVendorId;
 
   /** ---------- Auth hint ---------- */
@@ -144,11 +149,9 @@ export default function VendorDashboard() {
         ? `${API_BASE}/api/vendors/${asVendorId}`
         : `${API_BASE}/api/vendors/user/${user!.id}`;
 
-      // Support either a raw vendor object OR { vendor: {...} }
       const raw = await fetchJSON<any>(url);
       const v = raw?.vendor ?? raw;
 
-      // Normalize snake_case / alt fields → camelCase
       const isApproved =
         typeof v?.isApproved === "boolean"
           ? v.isApproved
@@ -312,7 +315,7 @@ export default function VendorDashboard() {
     })
     .reduce((sum, o) => sum + Number(o.total || 0), 0);
 
-  // ✅ Only real vendor can manage (admin "view as" is read-only)
+  // Only real vendor can manage (admin "view as" is read-only)
   const canManage = !!vendor?.isApproved && !viewMode;
 
   /** ---------- UI ---------- */
@@ -597,7 +600,6 @@ export default function VendorDashboard() {
         </Dialog>
 
         <Button variant="outline" data-testid="button-analytics">
-          {/* Placeholder for future analytics modal/page */}
           View Analytics
         </Button>
       </div>
