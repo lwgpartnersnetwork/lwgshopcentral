@@ -3,18 +3,36 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { site } from "@/config/site";
 import {
-  Store, Users, Package, TrendingUp, UserPlus, Flag, Settings,
-  Eye, Check, X, Ban, Mail, RefreshCw, Trash2, Loader2,
+  Store,
+  Users,
+  Package,
+  TrendingUp,
+  UserPlus,
+  Flag,
+  Settings,
+  Eye,
+  Check,
+  X,
+  Ban,
+  Mail,
+  RefreshCw,
+  Trash2,
+  Loader2,
 } from "lucide-react";
 
 /* ---------------- helpers ---------------- */
-const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) || "";
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) || ""; // same-origin fallback
 
 /** Basic GET with credentials + readable errors */
 async function fetchJSON<T = any>(url: string): Promise<T> {
@@ -28,9 +46,9 @@ async function fetchJSON<T = any>(url: string): Promise<T> {
     throw new Error(msg);
   }
   try {
-    return await res.json();
+    return (await res.json()) as T;
   } catch {
-    // Some endpoints may return empty body
+    // Some endpoints may return an empty body on success
     return {} as T;
   }
 }
@@ -80,6 +98,7 @@ async function tryJsonEndpoints(
   throw new Error(lastErr || "All endpoints failed");
 }
 
+/* ---------------- types ---------------- */
 type VendorRow = {
   id: string;
   storeName: string;
@@ -96,22 +115,31 @@ export default function AdminDashboard() {
   const queryClient = useQueryClient();
 
   /* ------- data ------- */
+  // Pull vendors, normalize to { isApproved: boolean }
   const vendorsQuery = useQuery<VendorRow[]>({
     queryKey: ["admin/vendors"],
     queryFn: async () => {
-      const data = await fetchJSON<any>(`${API_BASE}/api/admin/vendors`).catch(() => ({ vendors: [] }));
-      const items = Array.isArray(data?.vendors) ? data.vendors : Array.isArray(data) ? data : [];
-      return items.map((v: any): VendorRow => ({
-        id: String(v.id),
-        storeName: v.storeName ?? v.store_name ?? "Vendor",
-        isApproved:
-          typeof v.isApproved === "boolean"
-            ? v.isApproved
-            : v.status === "approved" || v.approved === true,
-        createdAt: v.createdAt ?? v.created_at ?? null,
-        userId: v.userId ?? v.user_id ?? null,
-        email: v.email ?? v.contact_email ?? null,
+      const data = await fetchJSON<any>(`${API_BASE}/api/admin/vendors`).catch(() => ({
+        vendors: [],
       }));
+      const items = Array.isArray(data?.vendors)
+        ? data.vendors
+        : Array.isArray(data)
+        ? data
+        : [];
+      return items.map(
+        (v: any): VendorRow => ({
+          id: String(v.id),
+          storeName: v.storeName ?? v.store_name ?? "Vendor",
+          isApproved:
+            typeof v.isApproved === "boolean"
+              ? v.isApproved
+              : v.status === "approved" || v.approved === true,
+          createdAt: v.createdAt ?? v.created_at ?? null,
+          userId: v.userId ?? v.user_id ?? null,
+          email: v.email ?? v.contact_email ?? null,
+        }),
+      );
     },
     staleTime: 10_000,
   });
@@ -128,7 +156,7 @@ export default function AdminDashboard() {
     retry: false,
   });
 
-  // Optional “requests” endpoint
+  // Optional vendor requests endpoint
   const vendorRequestsQuery = useQuery<any[]>({
     queryKey: ["vendor-requests"],
     queryFn: async () => {
@@ -152,15 +180,17 @@ export default function AdminDashboard() {
     ...vendors,
     ...vendorRequests
       .filter((r: any) => !vendorIds.has(String(r.id)))
-      .map((r: any): VendorRow => ({
-        id: String(r.id),
-        storeName: r.storeName ?? r.store_name ?? "Vendor",
-        isApproved: false,
-        createdAt: r.createdAt ?? r.created_at ?? null,
-        userId: r.userId ?? r.user_id ?? null,
-        email: r.email ?? r.contact_email ?? null,
-        __requestOnly: true,
-      })),
+      .map(
+        (r: any): VendorRow => ({
+          id: String(r.id),
+          storeName: r.storeName ?? r.store_name ?? "Vendor",
+          isApproved: false,
+          createdAt: r.createdAt ?? r.created_at ?? null,
+          userId: r.userId ?? r.user_id ?? null,
+          email: r.email ?? r.contact_email ?? null,
+          __requestOnly: true,
+        }),
+      ),
   ];
 
   /* ------- mutations (with optimistic updates) ------- */
@@ -169,13 +199,10 @@ export default function AdminDashboard() {
     mutationFn: async (vars: { vendorId: string; isApproved: boolean }) => {
       const { vendorId, isApproved } = vars;
 
-      // Try several server shapes
-      const bodies = [
-        { isApproved },
-        { approved: isApproved },
-        { status: isApproved ? "approved" : "pending" },
-      ];
+      // Bodies some backends accept
+      const bodies = [{ isApproved }, { approved: isApproved }, { status: isApproved ? "approved" : "pending" }];
 
+      // Paths many backends use
       const pathsApprove = [
         `/api/admin/vendors/${vendorId}/approval`,
         `/api/admin/vendors/${vendorId}`,
@@ -192,10 +219,9 @@ export default function AdminDashboard() {
         `/api/admin/vendors/${vendorId}/reject`,
         `/api/vendors/${vendorId}/reject`,
       ];
-
       const paths = isApproved ? pathsApprove : pathsReject;
 
-      // Try PATCH then PUT then POST
+      // Try PATCH then PUT then POST for each body variant
       for (const body of bodies) {
         try {
           return await tryJsonEndpoints("PATCH", paths, body);
@@ -207,13 +233,12 @@ export default function AdminDashboard() {
           return await tryJsonEndpoints("POST", paths, body);
         } catch {}
       }
-      // Final throw if everything failed
       throw new Error("No approval endpoint accepted the request");
     },
+    // optimistic toggle
     onMutate: async ({ vendorId, isApproved }) => {
       await queryClient.cancelQueries({ queryKey: ["admin/vendors"] });
       const prev = queryClient.getQueryData<VendorRow[]>(["admin/vendors"]);
-      // optimistic toggle in both lists (vendors + merged result source)
       queryClient.setQueryData<VendorRow[]>(["admin/vendors"], (old) =>
         (old ?? []).map((v) => (v.id === vendorId ? { ...v, isApproved } : v)),
       );
@@ -221,11 +246,8 @@ export default function AdminDashboard() {
     },
     onError: (e: any, _vars, ctx) => {
       if (ctx?.prev) queryClient.setQueryData(["admin/vendors"], ctx.prev);
-      toast({
-        title: "Error",
-        description: `Failed to update vendor approval${e?.message ? `: ${e.message}` : ""}`,
-        variant: "destructive",
-      });
+      const msg = e?.message ? `: ${e.message}` : "";
+      toast({ title: "Error", description: `Failed to update vendor approval${msg}`, variant: "destructive" });
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["admin/vendors"] });
@@ -244,6 +266,7 @@ export default function AdminDashboard() {
         `/api/vendors/${vendorId}`,
       ]);
     },
+    // optimistic removal
     onMutate: async (vendorId: string) => {
       await queryClient.cancelQueries({ queryKey: ["admin/vendors"] });
       const prev = queryClient.getQueryData<VendorRow[]>(["admin/vendors"]);
@@ -254,11 +277,8 @@ export default function AdminDashboard() {
     },
     onError: (e: any, _vendorId, ctx) => {
       if (ctx?.prev) queryClient.setQueryData(["admin/vendors"], ctx.prev);
-      toast({
-        title: "Error",
-        description: `Failed to delete vendor${e?.message ? `: ${e.message}` : ""}`,
-        variant: "destructive",
-      });
+      const msg = e?.message ? `: ${e.message}` : "";
+      toast({ title: "Error", description: `Failed to delete vendor${msg}`, variant: "destructive" });
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["admin/vendors"] });
@@ -285,7 +305,6 @@ export default function AdminDashboard() {
       deleteVendorMutation.mutate(vendorId);
     }
   };
-
   const handleBulkApprove = () => {
     const pending = mergedVendors.filter((v) => !v.isApproved);
     if (!pending.length) return;
@@ -321,22 +340,16 @@ export default function AdminDashboard() {
   const pendingVendors = mergedVendors.filter((v) => !v.isApproved);
   const todaysOrders =
     orders.filter(
-      (o: any) =>
-        new Date(o?.createdAt ?? 0).toDateString() === new Date().toDateString(),
+      (o: any) => new Date(o?.createdAt ?? 0).toDateString() === new Date().toDateString(),
     ).length ?? 0;
 
   /* ------- UI helpers ------- */
-  const Loading = (
-    <div className="text-sm text-muted-foreground py-6">Loading…</div>
-  );
+  const Loading = <div className="text-sm text-muted-foreground py-6">Loading…</div>;
   const ErrorMsg = ({ msg }: { msg?: string }) => (
-    <div className="text-sm text-destructive py-6">
-      {msg || "Something went wrong."}
-    </div>
+    <div className="text-sm text-destructive py-6">{msg || "Something went wrong."}</div>
   );
 
-  const anyActionPending =
-    updateVendorApprovalMutation.isPending || deleteVendorMutation.isPending;
+  const anyActionPending = updateVendorApprovalMutation.isPending || deleteVendorMutation.isPending;
 
   return (
     <div className="container mx-auto px-4 py-8 overflow-x-hidden">
@@ -346,9 +359,7 @@ export default function AdminDashboard() {
           <h1 className="text-3xl font-bold mb-2" data-testid="text-admin-title">
             Admin Dashboard
           </h1>
-          <p className="text-muted-foreground">
-            Comprehensive platform management and analytics
-          </p>
+          <p className="text-muted-foreground">Comprehensive platform management and analytics</p>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
@@ -447,10 +458,7 @@ export default function AdminDashboard() {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-sm text-muted-foreground">Support Email</p>
-                <p
-                  className="text-sm sm:text-base font-medium break-all"
-                  data-testid="text-support-email"
-                >
+                <p className="text-sm sm:text-base font-medium break-all" data-testid="text-support-email">
                   {site.supportEmail}
                 </p>
               </div>
@@ -538,9 +546,7 @@ export default function AdminDashboard() {
                         </div>
                       </TableCell>
 
-                      <TableCell className="font-medium">
-                        {vendor.storeName || "—"}
-                      </TableCell>
+                      <TableCell className="font-medium">{vendor.storeName || "—"}</TableCell>
 
                       <TableCell>
                         <Badge
@@ -552,9 +558,7 @@ export default function AdminDashboard() {
                       </TableCell>
 
                       <TableCell>
-                        {vendor.createdAt
-                          ? new Date(vendor.createdAt).toLocaleDateString()
-                          : "—"}
+                        {vendor.createdAt ? new Date(vendor.createdAt).toLocaleDateString() : "—"}
                       </TableCell>
 
                       <TableCell>
