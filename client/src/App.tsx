@@ -23,12 +23,10 @@ import BecomeVendor from "@/pages/become-vendor";
 import Checkout from "@/pages/checkout";
 import NotFound from "@/pages/not-found";
 
-/** Type for your /products/:id route params */
-type ProductRouteParams = { id: string };
-
-/* --- Debug helper so we can see which route rendered --- */
+/* --- Optional tiny helper to log which route mounted (debug only) --- */
 function RouteProbe({ tag }: { tag: string }) {
   useEffect(() => {
+    // eslint-disable-next-line no-console
     console.log(`[route] ${tag} mounted`);
   }, [tag]);
   return null;
@@ -58,12 +56,12 @@ function AppRoutes() {
         </>
       </Route>
 
+      {/* Product details reads :id via useParams inside the page, so no props here */}
       <Route path="/products/:id">
-        {(params: ProductRouteParams) => (
+        {() => (
           <>
-            <RouteProbe tag={`product ${params.id}`} />
-            {/* ✅ strong typing instead of `as any` */}
-            <ProductDetails params={params} />
+            <RouteProbe tag="product-details" />
+            <ProductDetails />
           </>
         )}
       </Route>
@@ -83,7 +81,7 @@ function AppRoutes() {
         </>
       </Route>
 
-      {/* ✅ Admin aliases so /admin and /admin/vendors both work */}
+      {/* Admin aliases so /admin and /admin/vendors both work */}
       <Route path="/admin">
         <>
           <RouteProbe tag="admin (alias)" />
@@ -118,7 +116,6 @@ function AppRoutes() {
         </>
       </Route>
 
-      {/* Checkout */}
       <Route path="/checkout">
         <>
           <RouteProbe tag="checkout" />
@@ -126,7 +123,7 @@ function AppRoutes() {
         </>
       </Route>
 
-      {/* Catch-all for 404s in wouter v3 */}
+      {/* Catch-all 404 (wouter v3) */}
       <Route path="*">
         <>
           <RouteProbe tag="not-found" />
@@ -141,9 +138,8 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <CurrencyProvider>
-        {/* NLe/USD formatter available app-wide */}
         <TooltipProvider>
-          {/* overflow-x-hidden prevents horizontal wiggle on mobile */}
+          {/* Avoid horizontal scroll-jank across pages */}
           <div className="min-h-screen bg-background overflow-x-hidden">
             <Navbar />
             <main>
