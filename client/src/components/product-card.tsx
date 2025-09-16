@@ -15,28 +15,33 @@ export function ProductCard({ product }: ProductCardProps) {
   const { addItem } = useCartStore();
   const { format } = useCurrency();
 
-  // Normalize price (supports string or number)
+  // Normalize/derive fields
   const price = Number(product?.price ?? 0);
-  const stock = Number(product?.stock ?? 0);
-  const hasImage = Boolean(product?.imageUrl);
+  const stock = Number((product as any)?.stock ?? 0);
+  const name =
+    (product as any)?.name ??
+    (product as any)?.title ??
+    "Product";
+  const hasImage = Boolean((product as any)?.imageUrl);
 
   const handleAddToCart = (e: React.MouseEvent) => {
-    e.preventDefault(); // keep card link from navigating
+    // Prevent the surrounding <Link> from navigating when clicking the button
+    e.preventDefault();
     e.stopPropagation();
     // Ensure cart always receives a numeric price
     addItem({ ...(product as any), price });
   };
 
   return (
-    <Link href={`/products/${product.id}`}>
+    <Link href={`/products/${(product as any).id}`}>
       <Card className="group cursor-pointer overflow-hidden hover:shadow-xl transition-all">
         <div className="aspect-square overflow-hidden bg-muted">
           {hasImage ? (
             <img
-              src={product.imageUrl as string}
-              alt={product.name}
+              src={(product as any).imageUrl as string}
+              alt={name}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-              data-testid={`img-product-${product.id}`}
+              data-testid={`img-product-${(product as any).id}`}
               loading="lazy"
             />
           ) : (
@@ -50,24 +55,24 @@ export function ProductCard({ product }: ProductCardProps) {
         <CardContent className="p-6">
           <h3
             className="font-semibold text-lg mb-2 text-card-foreground line-clamp-2"
-            data-testid={`text-product-name-${product.id}`}
+            data-testid={`text-product-name-${(product as any).id}`}
           >
-            {product.name}
+            {name}
           </h3>
 
-          {product.description && (
+          {(product as any).description && (
             <p
               className="text-muted-foreground text-sm mb-3 line-clamp-2"
-              data-testid={`text-product-description-${product.id}`}
+              data-testid={`text-product-description-${(product as any).id}`}
             >
-              {product.description}
+              {(product as any).description}
             </p>
           )}
 
           <div className="flex items-center justify-between mb-4">
             <span
               className="text-2xl font-bold text-primary"
-              data-testid={`text-price-${product.id}`}
+              data-testid={`text-price-${(product as any).id}`}
             >
               {format(price)}
             </span>
@@ -80,7 +85,7 @@ export function ProductCard({ product }: ProductCardProps) {
           <div className="flex items-center justify-between mb-4">
             <Badge
               variant={stock > 0 ? "secondary" : "destructive"}
-              data-testid={`badge-stock-${product.id}`}
+              data-testid={`badge-stock-${(product as any).id}`}
             >
               {stock > 0 ? `${stock} in stock` : "Out of stock"}
             </Badge>
@@ -90,7 +95,7 @@ export function ProductCard({ product }: ProductCardProps) {
             onClick={handleAddToCart}
             disabled={stock <= 0}
             className="w-full"
-            data-testid={`button-add-to-cart-${product.id}`}
+            data-testid={`button-add-to-cart-${(product as any).id}`}
           >
             <ShoppingCart className="h-4 w-4 mr-2" />
             Add to Cart
@@ -100,3 +105,6 @@ export function ProductCard({ product }: ProductCardProps) {
     </Link>
   );
 }
+
+/** Also export a default so pages can `import ProductCard from ...` */
+export default ProductCard;
