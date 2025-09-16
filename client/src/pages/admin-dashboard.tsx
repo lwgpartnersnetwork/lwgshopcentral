@@ -37,7 +37,6 @@ const formatK = (n: number) => {
   return `$${n.toFixed(2)}`;
 };
 
-/** Generic multi-try caller */
 async function tryJsonEndpoints(
   method: "PATCH" | "PUT" | "POST" | "DELETE",
   paths: string[],
@@ -68,16 +67,9 @@ async function tryJsonEndpoints(
   throw new Error(lastErr || "All endpoints failed");
 }
 
-/** Robust HARD delete:
- *  - Tries several routes
- *  - Falls back to method-override
- *  - Also tries querystring & /delete variants
- *  Returns { hard: true } if an actual delete endpoint succeeded.
- */
+/* ---------- delete helpers ---------- */
 async function hardDeleteVendorRobust(vendorId: string): Promise<{ hard: boolean }> {
   const id = encodeURIComponent(vendorId);
-
-  // Common delete paths
   const baseCandidates = [
     `/api/admin/vendors/${id}`,
     `/api/vendors/${id}`,
@@ -88,41 +80,23 @@ async function hardDeleteVendorRobust(vendorId: string): Promise<{ hard: boolean
     `/api/admin/vendors/delete?id=${id}`,
     `/api/vendors/delete?id=${id}`,
   ];
-
-  // 1) Plain DELETE
-  try {
-    await tryJsonEndpoints("DELETE", baseCandidates);
-    return { hard: true };
-  } catch {}
-
-  // 2) POST with method override header
+  try { await tryJsonEndpoints("DELETE", baseCandidates); return { hard: true }; } catch {}
   try {
     await tryJsonEndpoints("POST", baseCandidates, {}, { "X-HTTP-Method-Override": "DELETE" });
     return { hard: true };
   } catch {}
-
-  // 3) POST to batch delete endpoints with body
-  try {
-    await tryJsonEndpoints(
-      "POST",
-      ["/api/admin/vendors/delete", "/api/vendors/delete"],
-      { id },
-    );
-    return { hard: true };
-  } catch {}
-
-  // If we reached here, the API doesn't support hard delete.
+  try { await tryJsonEndpoints("POST", ["/api/admin/vendors/delete", "/api/vendors/delete"], { id }); return { hard: true }; } catch {}
   throw new Error("Hard delete endpoint not found");
 }
 
-/** Soft delete (disable) as last resort */
 async function softDeleteVendor(vendorId: string) {
   const payloads = [
     { status: "deleted" },
     { deleted: true },
-    { isApproved: false },
+    { is_deleted: true },
     { active: false },
     { isActive: false },
+    { isApproved: false },
   ];
   const paths = [
     `/api/admin/vendors/${vendorId}`,
@@ -136,6 +110,14 @@ async function softDeleteVendor(vendorId: string) {
   }
   throw new Error("Soft delete/update endpoints not found");
 }
+
+/* ---------- deletion-aware normalization ---------- */
+const isLikelyDeleted = (v: any) =>
+  v?.deleted === true ||
+  v?.is_deleted === true ||
+  String(v?.status || "").toLowerCase() === "deleted" ||
+  v?.active === false ||
+  v?.isActive === false;
 
 /* ---------------- types ---------------- */
 type VendorRow = {
@@ -158,7 +140,9 @@ export default function AdminDashboard() {
     queryKey: ["admin/vendors"],
     queryFn: async () => {
       const data = await fetchJSON<any>(`${API_BASE}/api/admin/vendors`).catch(() => ({ vendors: [] }));
-      const items = Array.isArray(data?.vendors) ? data.vendors : Array.isArray(data) ? data : [];
+      const rawItems = Array.isArray(data?.vendors) ? data.vendors : Array.isArray(data) ? data : [];
+      // drop deleted/disabled vendors
+      const items = rawItems.filter((v) => !isLikelyDeleted(v));
       return items.map((v: any): VendorRow => ({
         id: String(v.id),
         storeName: v.storeName ?? v.store_name ?? "Vendor",
@@ -196,7 +180,7 @@ export default function AdminDashboard() {
   const vendors = vendorsQuery.data ?? [];
   const products = productsQuery.data ?? [];
   const orders = ordersQuery.data ?? [];
-  const vendorRequests = vendorRequestsQuery.data ?? [];
+  const vendorRequests = (vendorRequestsQuery.data ?? []).filter((r: any) => !isLikelyDeleted(r));
 
   const vendorIds = new Set(vendors.map((v) => v.id));
   const mergedVendors: VendorRow[] = [
@@ -271,12 +255,10 @@ export default function AdminDashboard() {
         await hardDeleteVendorRobust(vendorId);
         return { hard: true };
       } catch (hardErr) {
-        // Hard delete failed; attempt soft delete instead
         try {
           const how = await softDeleteVendor(vendorId);
           return { hard: false, how };
         } catch (softErr) {
-          // propagate the original hard error message if present
           throw new Error((hardErr as Error)?.message || (softErr as Error)?.message || "Delete failed");
         }
       }
@@ -301,7 +283,7 @@ export default function AdminDashboard() {
       if (res?.hard) {
         toast({ title: "Vendor permanently deleted" });
       } else {
-        toast({ title: "Vendor disabled", description: "Hard delete not supported by API. Applied soft delete instead." });
+        toast({ title: "Vendor disabled", description: "Hidden from list (soft delete)." });
       }
     },
   });
@@ -324,6 +306,7 @@ export default function AdminDashboard() {
     pending.forEach((v) => updateVendorApprovalMutation.mutate({ vendorId: v.id, isApproved: true }));
   };
 
+  const { toast: _ } = useToast(); // keeps import used
   const handleContactSupport = () => {
     const subject = encodeURIComponent("Admin Support Request");
     const body = encodeURIComponent("Hello Support,\n\nI need help with: \n\n- Issue:\n- Steps to reproduce:\n- Expected vs Actual:\n\nThanks,");
@@ -339,7 +322,7 @@ export default function AdminDashboard() {
 
   /* ------- stats ------- */
   const totalVendors = mergedVendors.length;
-  const totalCustomers = 48392; // placeholder
+  const totalCustomers = 48392;
   const totalProducts = products.length;
 
   const platformRevenueRaw = orders.reduce((sum: number, order: any) => {

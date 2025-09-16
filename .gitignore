@@ -9,3 +9,5 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gzNUL
+NUL
+nul
