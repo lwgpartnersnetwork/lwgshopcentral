@@ -1,20 +1,38 @@
-// client/src/pages/AdminDashboard.tsx
+// client/src/pages/admin-dashboard.tsx
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { site } from "@/config/site";
 import {
-  Store, Users, Package, TrendingUp, UserPlus, Flag, Settings,
-  Eye, Check, X, Ban, Mail, RefreshCw,
+  Store,
+  Users,
+  Package,
+  TrendingUp,
+  UserPlus,
+  Flag,
+  Settings,
+  Eye,
+  Check,
+  X,
+  Ban,
+  Mail,
+  RefreshCw,
+  Trash2,
 } from "lucide-react";
 
 /* ---------------- helpers ---------------- */
-const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) || ""; // same-origin fallback
+const API_BASE =
+  (import.meta.env.VITE_API_URL as string | undefined) || ""; // same-origin fallback
 
 async function fetchJSON<T = any>(url: string): Promise<T> {
   const res = await fetch(url, { credentials: "include" });
@@ -40,6 +58,42 @@ const formatK = (n: number) => {
   return `$${n.toFixed(2)}`;
 };
 
+/** Try a list of endpoints until one succeeds (good for mixed backends) */
+async function tryJsonEndpoints(
+  method: "PATCH" | "PUT" | "POST" | "DELETE",
+  paths: string[],
+  body?: Record<string, any>,
+) {
+  let lastErr = "";
+  for (const path of paths) {
+    try {
+      const res = await fetch(`${API_BASE}${path}`, {
+        method,
+        headers:
+          method === "DELETE" ? undefined : { "Content-Type": "application/json" },
+        body: method === "DELETE" ? undefined : JSON.stringify(body ?? {}),
+        credentials: "include",
+      });
+      if (res.ok) {
+        // backend might not return JSON
+        try {
+          return await res.json();
+        } catch {
+          return {};
+        }
+      }
+      lastErr = `${res.status} ${res.statusText}`;
+      try {
+        const t = await res.text();
+        if (t) lastErr = t;
+      } catch {}
+    } catch (e: any) {
+      lastErr = e?.message || "Network error";
+    }
+  }
+  throw new Error(lastErr || "All endpoints failed");
+}
+
 type VendorRow = {
   id: string;
   storeName: string;
@@ -56,19 +110,21 @@ export default function AdminDashboard() {
   const queryClient = useQueryClient();
 
   /* ------- data ------- */
-  // Pull from the new admin endpoint and normalize to { isApproved: boolean }
+  // Pull from the admin endpoint and normalize to { isApproved: boolean }
   const vendorsQuery = useQuery<VendorRow[]>({
     queryKey: ["admin/vendors"],
     queryFn: async () => {
-      const data = await fetchJSON<{ vendors: any[] }>(`${API_BASE}/api/admin/vendors`);
-      const items = Array.isArray(data?.vendors) ? data.vendors : [];
+      const data = await fetchJSON<any>(`${API_BASE}/api/admin/vendors`).catch(
+        () => ({ vendors: [] }),
+      );
+      const items = Array.isArray(data?.vendors) ? data.vendors : Array.isArray(data) ? data : [];
       return items.map((v: any): VendorRow => ({
         id: String(v.id),
         storeName: v.storeName ?? v.store_name ?? "Vendor",
         isApproved:
           typeof v.isApproved === "boolean"
             ? v.isApproved
-            : (v.status === "approved"),
+            : v.status === "approved" || v.approved === true,
         createdAt: v.createdAt ?? v.created_at ?? null,
         userId: v.userId ?? v.user_id ?? null,
         email: v.email ?? v.contact_email ?? null,
@@ -113,15 +169,17 @@ export default function AdminDashboard() {
     ...vendors,
     ...vendorRequests
       .filter((r: any) => !vendorIds.has(String(r.id)))
-      .map((r: any): VendorRow => ({
-        id: String(r.id),
-        storeName: r.storeName ?? r.store_name ?? "Vendor",
-        isApproved: false,
-        createdAt: r.createdAt ?? r.created_at ?? null,
-        userId: r.userId ?? r.user_id ?? null,
-        email: r.email ?? r.contact_email ?? null,
-        __requestOnly: true,
-      })),
+      .map(
+        (r: any): VendorRow => ({
+          id: String(r.id),
+          storeName: r.storeName ?? r.store_name ?? "Vendor",
+          isApproved: false,
+          createdAt: r.createdAt ?? r.created_at ?? null,
+          userId: r.userId ?? r.user_id ?? null,
+          email: r.email ?? r.contact_email ?? null,
+          __requestOnly: true,
+        }),
+      ),
   ];
 
   /* ------- mutations ------- */
@@ -129,32 +187,57 @@ export default function AdminDashboard() {
     mutationFn: async ({
       vendorId,
       isApproved,
-    }: { vendorId: string; isApproved: boolean }) => {
-      const res = await fetch(`${API_BASE}/api/vendors/${vendorId}/approval`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isApproved }),
-        credentials: "include",
-      });
-      if (!res.ok) {
-        let msg = `HTTP ${res.status}`;
-        try {
-          const t = await res.text();
-          msg = t || msg;
-        } catch {}
-        throw new Error(msg);
-      }
-      return res.json();
+    }: {
+      vendorId: string;
+      isApproved: boolean;
+    }) => {
+      // Try a few variants so we work with either server shape
+      return tryJsonEndpoints(
+        "PATCH",
+        [
+          `/api/admin/vendors/${vendorId}/approval`,
+          `/api/admin/vendors/${vendorId}`,
+          `/api/vendors/${vendorId}/approval`,
+          `/api/vendors/${vendorId}`,
+        ],
+        { isApproved },
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin/vendors"] });
       queryClient.invalidateQueries({ queryKey: ["vendor-requests"] });
       toast({ title: "Success", description: "Vendor approval status updated" });
     },
-    onError: () => {
+    onError: (e: any) => {
       toast({
         title: "Error",
-        description: "Failed to update vendor approval",
+        description: `Failed to update vendor approval${
+          e?.message ? `: ${e.message}` : ""
+        }`,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteVendorMutation = useMutation({
+    mutationFn: async (vendorId: string) => {
+      // Try DELETE on both admin & non-admin routes
+      return tryJsonEndpoints("DELETE", [
+        `/api/admin/vendors/${vendorId}`,
+        `/api/vendors/${vendorId}`,
+      ]);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin/vendors"] });
+      queryClient.invalidateQueries({ queryKey: ["vendor-requests"] });
+      toast({ title: "Vendor removed" });
+    },
+    onError: (e: any) => {
+      toast({
+        title: "Error",
+        description: `Failed to delete vendor${
+          e?.message ? `: ${e.message}` : ""
+        }`,
         variant: "destructive",
       });
     },
@@ -167,11 +250,20 @@ export default function AdminDashboard() {
   const handleRejectVendor = (vendorId: string) => {
     updateVendorApprovalMutation.mutate({ vendorId, isApproved: false });
   };
+  const handleDeleteVendor = (vendorId: string) => {
+    if (
+      confirm(
+        "Delete this vendor? This will remove the vendor record. (Products or orders may remain, depending on server rules.)",
+      )
+    ) {
+      deleteVendorMutation.mutate(vendorId);
+    }
+  };
 
   const handleContactSupport = () => {
     const subject = encodeURIComponent("Admin Support Request");
     const body = encodeURIComponent(
-      "Hello Support,\n\nI need help with: \n\n- Issue:\n- Steps to reproduce:\n- Expected vs Actual:\n\nThanks,"
+      "Hello Support,\n\nI need help with: \n\n- Issue:\n- Steps to reproduce:\n- Expected vs Actual:\n\nThanks,",
     );
     window.location.href = `mailto:${site.supportEmail}?subject=${subject}&body=${body}`;
   };
@@ -198,7 +290,7 @@ export default function AdminDashboard() {
   const todaysOrders =
     orders.filter(
       (o: any) =>
-        new Date(o?.createdAt ?? 0).toDateString() === new Date().toDateString()
+        new Date(o?.createdAt ?? 0).toDateString() === new Date().toDateString(),
     ).length ?? 0;
 
   /* ------- UI helpers ------- */
@@ -210,6 +302,9 @@ export default function AdminDashboard() {
       {msg || "Something went wrong."}
     </div>
   );
+
+  const anyActionPending =
+    updateVendorApprovalMutation.isPending || deleteVendorMutation.isPending;
 
   return (
     <div className="container mx-auto px-4 py-8 overflow-x-hidden">
@@ -225,7 +320,13 @@ export default function AdminDashboard() {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <Button variant="ghost" size="sm" onClick={refreshAll} className="px-2 sm:px-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={refreshAll}
+            className="px-2 sm:px-3"
+            disabled={anyActionPending}
+          >
             <RefreshCw className="h-4 w-4" />
             <span className="sr-only sm:not-sr-only sm:ml-2">Refresh</span>
           </Button>
@@ -337,7 +438,7 @@ export default function AdminDashboard() {
 
       {/* Admin Actions */}
       <div className="flex flex-wrap gap-4 mb-8">
-        <Button data-testid="button-approve-vendor">
+        <Button data-testid="button-approve-vendor" disabled={!pendingVendors.length}>
           <UserPlus className="mr-2 h-4 w-4" />
           Approve Vendors ({pendingVendors.length})
         </Button>
@@ -416,9 +517,19 @@ export default function AdminDashboard() {
 
                       <TableCell>
                         <div className="flex space-x-2">
-                          <Button variant="ghost" size="sm" data-testid={`button-view-vendor-${vendor.id}`}>
-                            <Eye className="h-4 w-4" />
+                          {/* View as vendor (read-only) */}
+                          <Button
+                            asChild
+                            variant="ghost"
+                            size="sm"
+                            data-testid={`button-view-vendor-${vendor.id}`}
+                            title="View dashboard (read-only)"
+                          >
+                            <a href={`/vendor-dashboard?vendorId=${vendor.id}`}>
+                              <Eye className="h-4 w-4" />
+                            </a>
                           </Button>
+
                           {!vendor.isApproved ? (
                             <>
                               <Button
@@ -427,6 +538,8 @@ export default function AdminDashboard() {
                                 onClick={() => handleApproveVendor(vendor.id)}
                                 className="text-accent hover:text-accent"
                                 data-testid={`button-approve-${vendor.id}`}
+                                disabled={updateVendorApprovalMutation.isPending}
+                                title="Approve vendor"
                               >
                                 <Check className="h-4 w-4" />
                               </Button>
@@ -436,19 +549,39 @@ export default function AdminDashboard() {
                                 onClick={() => handleRejectVendor(vendor.id)}
                                 className="text-destructive hover:text-destructive"
                                 data-testid={`button-reject-${vendor.id}`}
+                                disabled={updateVendorApprovalMutation.isPending}
+                                title="Reject / keep pending"
                               >
                                 <X className="h-4 w-4" />
                               </Button>
                             </>
                           ) : (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-destructive hover:text-destructive"
-                              data-testid={`button-ban-${vendor.id}`}
-                            >
-                              <Ban className="h-4 w-4" />
-                            </Button>
+                            <>
+                              {/* “Ban” = set isApproved=false (fallback if no special ban endpoint) */}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-destructive hover:text-destructive"
+                                onClick={() => handleRejectVendor(vendor.id)}
+                                data-testid={`button-ban-${vendor.id}`}
+                                disabled={updateVendorApprovalMutation.isPending}
+                                title="Disable (set unapproved)"
+                              >
+                                <Ban className="h-4 w-4" />
+                              </Button>
+                              {/* Hard delete */}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-destructive hover:text-destructive"
+                                onClick={() => handleDeleteVendor(vendor.id)}
+                                data-testid={`button-delete-${vendor.id}`}
+                                disabled={deleteVendorMutation.isPending}
+                                title="Delete vendor"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </>
                           )}
                         </div>
                       </TableCell>

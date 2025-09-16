@@ -8,15 +8,29 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from "@/components/ui/table";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 
@@ -25,12 +39,22 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { insertProductSchema } from "@shared/schema";
 import {
-  Plus, Package, Clock, DollarSign, Star, Edit, Trash2, Store,
-  CheckCircle2, XCircle, Loader2,
+  Plus,
+  Package,
+  Clock,
+  DollarSign,
+  Star,
+  Edit,
+  Trash2,
+  Store,
+  CheckCircle2,
+  XCircle,
+  Loader2,
 } from "lucide-react";
 
 /* ---------------- helpers ---------------- */
-const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) || ""; // same-origin fallback
+const API_BASE =
+  (import.meta.env.VITE_API_URL as string | undefined) || ""; // same-origin fallback
 
 async function fetchJSON<T = any>(url: string): Promise<T> {
   const res = await fetch(url, { credentials: "include" });
@@ -93,24 +117,35 @@ export default function VendorDashboard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  // ✅ Admin "view as vendor" (read-only) via ?vendorId=...
+  const asVendorId =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("vendorId")
+      : null;
+  const viewMode = !!asVendorId;
+
   /** ---------- Auth hint ---------- */
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated && !viewMode) {
       toast({
         title: "Please sign in",
         description: "You must sign in to access the vendor dashboard.",
         variant: "destructive",
       });
     }
-  }, [isAuthenticated, toast]);
+  }, [isAuthenticated, viewMode, toast]);
 
   /** ---------- Data: vendor, products, orders ---------- */
   const vendorQuery = useQuery<Vendor>({
-    queryKey: ["vendor-by-user", user?.id],
-    enabled: !!user?.id,
+    queryKey: viewMode ? ["vendor-by-id", asVendorId] : ["vendor-by-user", user?.id],
+    enabled: viewMode ? !!asVendorId : !!user?.id,
     queryFn: async () => {
+      const url = viewMode
+        ? `${API_BASE}/api/vendors/${asVendorId}`
+        : `${API_BASE}/api/vendors/user/${user!.id}`;
+
       // Support either a raw vendor object OR { vendor: {...} }
-      const raw = await fetchJSON<any>(`${API_BASE}/api/vendors/user/${user!.id}`);
+      const raw = await fetchJSON<any>(url);
       const v = raw?.vendor ?? raw;
 
       // Normalize snake_case / alt fields → camelCase
@@ -118,8 +153,8 @@ export default function VendorDashboard() {
         typeof v?.isApproved === "boolean"
           ? v.isApproved
           : typeof v?.is_approved === "boolean"
-            ? v.is_approved
-            : v?.status === "approved";
+          ? v.is_approved
+          : v?.status === "approved";
 
       const vendor: Vendor = {
         id: String(v?.id ?? ""),
@@ -130,7 +165,7 @@ export default function VendorDashboard() {
         email: v?.email ?? v?.contact_email ?? null,
       };
 
-      if (!vendor.id) throw new Error("Vendor not found for this user");
+      if (!vendor.id) throw new Error("Vendor not found");
       return vendor;
     },
     retry: false,
@@ -142,7 +177,9 @@ export default function VendorDashboard() {
     queryKey: ["products-by-vendor", vendor?.id],
     enabled: !!vendor?.id,
     queryFn: async () => {
-      const list = await fetchJSON<any[]>(`${API_BASE}/api/products?vendorId=${vendor!.id}`);
+      const list = await fetchJSON<any[]>(
+        `${API_BASE}/api/products?vendorId=${vendor!.id}`,
+      );
       return (list ?? []).map((p) => ({
         id: String(p.id),
         vendorId: String(p.vendorId ?? p.vendor_id ?? vendor!.id),
@@ -162,7 +199,9 @@ export default function VendorDashboard() {
     queryKey: ["orders-by-vendor", vendor?.id],
     enabled: !!vendor?.id,
     queryFn: async () => {
-      const list = await fetchJSON<any[]>(`${API_BASE}/api/orders/vendor/${vendor!.id}`);
+      const list = await fetchJSON<any[]>(
+        `${API_BASE}/api/orders/vendor/${vendor!.id}`,
+      );
       return (list ?? []).map((o) => ({
         id: String(o.id),
         vendorId: String(o.vendorId ?? o.vendor_id ?? vendor!.id),
@@ -219,7 +258,9 @@ export default function VendorDashboard() {
       await apiRequest("POST", "/api/products", payload);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["products-by-vendor", vendor?.id] });
+      queryClient.invalidateQueries({
+        queryKey: ["products-by-vendor", vendor?.id],
+      });
       setIsProductDialogOpen(false);
       form.reset({
         vendorId: vendor?.id ?? "",
@@ -246,7 +287,9 @@ export default function VendorDashboard() {
       await apiRequest("DELETE", `/api/products/${productId}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["products-by-vendor", vendor?.id] });
+      queryClient.invalidateQueries({
+        queryKey: ["products-by-vendor", vendor?.id],
+      });
       toast({ title: "Product deleted successfully" });
     },
     onError: () => {
@@ -269,18 +312,31 @@ export default function VendorDashboard() {
     })
     .reduce((sum, o) => sum + Number(o.total || 0), 0);
 
-  const canManage = !!vendor?.isApproved;
+  // ✅ Only real vendor can manage (admin "view as" is read-only)
+  const canManage = !!vendor?.isApproved && !viewMode;
 
   /** ---------- UI ---------- */
   return (
     <div className="container mx-auto px-4 py-8">
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-3xl font-bold flex items-center gap-2" data-testid="text-dashboard-title">
+        <h1
+          className="text-3xl font-bold flex items-center gap-2"
+          data-testid="text-dashboard-title"
+        >
           <Store className="h-7 w-7" /> Vendor Dashboard
         </h1>
-        <p className="text-muted-foreground">Manage your products, orders, and store performance</p>
+        <p className="text-muted-foreground">
+          Manage your products, orders, and store performance
+        </p>
       </div>
+
+      {/* Read-only banner for admin view */}
+      {viewMode && (
+        <div className="mb-4">
+          <Badge variant="secondary">Admin view — read-only</Badge>
+        </div>
+      )}
 
       {/* Vendor Status */}
       <Card className="mb-8">
@@ -396,7 +452,9 @@ export default function VendorDashboard() {
 
             {!canManage && (
               <div className="mb-4">
-                <Badge variant="destructive">Your store is pending admin approval</Badge>
+                <Badge variant="destructive">
+                  {viewMode ? "Admin view is read-only" : "Your store is pending admin approval"}
+                </Badge>
               </div>
             )}
 
@@ -405,8 +463,10 @@ export default function VendorDashboard() {
                 onSubmit={form.handleSubmit((data) => {
                   if (!canManage) {
                     return toast({
-                      title: "Not approved yet",
-                      description: "An admin must approve your store before adding products.",
+                      title: "Not allowed",
+                      description: viewMode
+                        ? "You’re viewing this store in read-only mode."
+                        : "An admin must approve your store before adding products.",
                       variant: "destructive",
                     });
                   }
@@ -421,7 +481,12 @@ export default function VendorDashboard() {
                     <FormItem>
                       <FormLabel>Product Name</FormLabel>
                       <FormControl>
-                        <Input placeholder="Enter product name" {...field} data-testid="input-product-name" />
+                        <Input
+                          placeholder="Enter product name"
+                          {...field}
+                          data-testid="input-product-name"
+                          disabled={!canManage}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -439,6 +504,7 @@ export default function VendorDashboard() {
                           placeholder="Enter product description"
                           {...field}
                           data-testid="input-product-description"
+                          disabled={!canManage}
                         />
                       </FormControl>
                       <FormMessage />
@@ -460,6 +526,7 @@ export default function VendorDashboard() {
                             placeholder="0.00"
                             {...field}
                             data-testid="input-product-price"
+                            disabled={!canManage}
                           />
                         </FormControl>
                         <FormMessage />
@@ -474,7 +541,13 @@ export default function VendorDashboard() {
                       <FormItem>
                         <FormLabel>Stock Quantity</FormLabel>
                         <FormControl>
-                          <Input type="number" placeholder="0" {...field} data-testid="input-product-stock" />
+                          <Input
+                            type="number"
+                            placeholder="0"
+                            {...field}
+                            data-testid="input-product-stock"
+                            disabled={!canManage}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -493,6 +566,7 @@ export default function VendorDashboard() {
                           placeholder="https://example.com/image.jpg"
                           {...field}
                           data-testid="input-product-image"
+                          disabled={!canManage}
                         />
                       </FormControl>
                       <FormMessage />
@@ -590,19 +664,37 @@ export default function VendorDashboard() {
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-2">
-                            <Button variant="ghost" size="sm" data-testid={`button-edit-${product.id}`}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              data-testid={`button-edit-${product.id}`}
+                              disabled={!canManage}
+                              title={canManage ? "Edit" : "Read-only"}
+                            >
                               <Edit className="h-4 w-4" />
                             </Button>
                             <Button
                               variant="ghost"
                               size="sm"
                               onClick={() => {
+                                if (!canManage) {
+                                  toast({
+                                    title: "Read-only",
+                                    description: viewMode
+                                      ? "Admin view is read-only."
+                                      : "Your store must be approved first.",
+                                    variant: "destructive",
+                                  });
+                                  return;
+                                }
                                 if (confirm("Delete this product?")) {
                                   deleteProductMutation.mutate(product.id);
                                 }
                               }}
                               className="text-destructive hover:text-destructive"
                               data-testid={`button-delete-${product.id}`}
+                              disabled={!canManage || deleteProductMutation.isPending}
+                              title={canManage ? "Delete" : "Read-only"}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -638,7 +730,9 @@ export default function VendorDashboard() {
               <TableBody>
                 {(orders ?? []).slice(0, 10).map((order) => (
                   <TableRow key={order.id} data-testid={`row-order-${order.id}`}>
-                    <TableCell className="font-mono text-sm">#{order.id.substring(0, 8)}</TableCell>
+                    <TableCell className="font-mono text-sm">
+                      #{order.id.substring(0, 8)}
+                    </TableCell>
                     <TableCell>{order.customerId}</TableCell>
                     <TableCell className="font-medium">
                       ${Number(order.total || 0).toFixed(2)}
@@ -656,7 +750,9 @@ export default function VendorDashboard() {
                         {order.status}
                       </Badge>
                     </TableCell>
-                    <TableCell>{new Date(order.createdAt).toLocaleDateString()}</TableCell>
+                    <TableCell>
+                      {new Date(order.createdAt).toLocaleDateString()}
+                    </TableCell>
                   </TableRow>
                 ))}
 
