@@ -1,9 +1,13 @@
-import { useState } from "react";
+// client/src/pages/BecomeVendor.tsx
+import React, { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/lib/auth";
+
+const API_BASE =
+  (import.meta.env.VITE_API_URL as string | undefined) || ""; // same-origin fallback
 
 export default function BecomeVendor() {
   const { user } = useAuthStore();
@@ -14,56 +18,78 @@ export default function BecomeVendor() {
   const [address, setAddress] = useState("");
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
-  const [notice, setNotice] = useState<{
-    type: "ok" | "err";
-    text: string;
-  } | null>(null);
+  const [notice, setNotice] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+
+  // If auth state changes, keep email in sync (but keep it editable only when not signed in)
+  useEffect(() => {
+    if (user?.email) setEmail(user.email);
+  }, [user?.email]);
+
+  function requireEmail(): boolean {
+    // email is required only if the user isn't signed in
+    return !user?.id;
+  }
+
+  function validate(): string | null {
+    if (!storeName.trim()) return "Store name is required.";
+    if (requireEmail() && !email.trim()) return "Email is required if you’re not signed in.";
+    if (email && !/^\S+@\S+\.\S+$/.test(email)) return "Enter a valid email address.";
+    if (phone && phone.length > 40) return "Phone number looks too long.";
+    return null;
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setNotice(null);
 
-    if (!storeName.trim()) {
-      setNotice({ type: "err", text: "Store name is required" });
-      return;
-    }
-    if (!user?.id && !email.trim()) {
-      setNotice({
-        type: "err",
-        text: "Email is required if you’re not signed in",
-      });
+    const err = validate();
+    if (err) {
+      setNotice({ type: "err", text: err });
       return;
     }
 
     setLoading(true);
     try {
-      const res = await fetch("/api/vendors/apply", {
+      const res = await fetch(`${API_BASE}/api/vendors/apply`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          storeName,
-          email: email || undefined,
+          storeName: storeName.trim(),
+          email: requireEmail() ? email.trim() : undefined,
           phone: phone || undefined,
           address: address || undefined,
           description: description || undefined,
           userId: user?.id ?? undefined,
         }),
       });
-      const data = await res.json();
-      if (!res.ok)
-        throw new Error(data?.message || "Failed to submit application");
+
+      // Try to read a helpful error payload if not ok
+      const payload = await (async () => {
+        try {
+          return await res.json();
+        } catch {
+          return null;
+        }
+      })();
+
+      if (!res.ok) {
+        throw new Error(payload?.message || `Failed to submit application (HTTP ${res.status})`);
+      }
 
       setNotice({
         type: "ok",
         text: "Application submitted! We’ll review it shortly.",
       });
+
+      // Reset fields (respect logged-in email)
       setStoreName("");
       setPhone("");
       setAddress("");
       setDescription("");
       if (!user?.id) setEmail("");
-    } catch (err: any) {
-      setNotice({ type: "err", text: err?.message ?? "Submission failed" });
+
+    } catch (e: any) {
+      setNotice({ type: "err", text: e?.message ?? "Submission failed" });
     } finally {
       setLoading(false);
     }
@@ -79,9 +105,11 @@ export default function BecomeVendor() {
           </p>
         </CardHeader>
         <CardContent>
-          <form onSubmit={onSubmit} className="space-y-4">
+          <form onSubmit={onSubmit} className="space-y-4" noValidate>
             {notice && (
               <div
+                role="status"
+                aria-live="polite"
                 className={`rounded-md p-3 text-sm ${
                   notice.type === "ok"
                     ? "bg-emerald-50 text-emerald-700"
@@ -97,6 +125,7 @@ export default function BecomeVendor() {
               value={storeName}
               onChange={(e) => setStoreName(e.target.value)}
               required
+              maxLength={120}
             />
 
             <Input
@@ -104,6 +133,8 @@ export default function BecomeVendor() {
               placeholder="Email (required if not signed in)"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              required={requireEmail()}
+              disabled={!!user?.id} // use account email when signed in
             />
 
             <Input
@@ -116,6 +147,7 @@ export default function BecomeVendor() {
               placeholder="Business Address (optional)"
               value={address}
               onChange={(e) => setAddress(e.target.value)}
+              maxLength={200}
             />
 
             <Textarea
@@ -123,6 +155,7 @@ export default function BecomeVendor() {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={5}
+              maxLength={1200}
             />
 
             <Button type="submit" disabled={loading} className="w-full">

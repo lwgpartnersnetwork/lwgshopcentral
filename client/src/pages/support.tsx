@@ -11,7 +11,6 @@ import { site } from "@/config/site";
 import {
   HeartPulse,
   Mail,
-  LifeBuoy,
   Home,
   Tag,
   Store,
@@ -20,10 +19,27 @@ import {
 
 type Health = { status: string } | undefined;
 
+/* Use VITE_API_URL when provided; otherwise same-origin */
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) || "";
+
+async function fetchJSON<T>(url: string): Promise<T> {
+  const res = await fetch(url, { credentials: "include" });
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try {
+      msg = (await res.text()) || msg;
+    } catch {}
+    throw new Error(msg);
+  }
+  return res.json() as Promise<T>;
+}
+
 export default function Support() {
   // 1) System status (GET /api/health)
   const { data: health, isLoading } = useQuery<Health>({
-    queryKey: ["/api/health"],
+    queryKey: ["health"],
+    queryFn: () => fetchJSON<Health>(`${API_BASE}/api/health`),
+    retry: false,
   });
 
   // 2) Simple mailto contact form (no backend)
@@ -59,7 +75,7 @@ Message:
 ${form.message || "(write here)"}${diag}`;
 
     window.location.href = `mailto:${site.supportEmail}?subject=${encodeURIComponent(
-      subject,
+      subject
     )}&body=${encodeURIComponent(body)}`;
   };
 
@@ -134,8 +150,11 @@ ${form.message || "(write here)"}${diag}`;
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm mb-1">Your Name</label>
+                <label className="block text-sm mb-1" htmlFor="support-name">
+                  Your Name
+                </label>
                 <Input
+                  id="support-name"
                   value={form.name}
                   onChange={(e) =>
                     setForm((f) => ({ ...f, name: e.target.value }))
@@ -145,8 +164,11 @@ ${form.message || "(write here)"}${diag}`;
                 />
               </div>
               <div>
-                <label className="block text-sm mb-1">Your Email</label>
+                <label className="block text-sm mb-1" htmlFor="support-email">
+                  Your Email
+                </label>
                 <Input
+                  id="support-email"
                   type="email"
                   value={form.email}
                   onChange={(e) =>
@@ -159,8 +181,11 @@ ${form.message || "(write here)"}${diag}`;
             </div>
 
             <div>
-              <label className="block text-sm mb-1">Topic</label>
+              <label className="block text-sm mb-1" htmlFor="support-topic">
+                Topic
+              </label>
               <Input
+                id="support-topic"
                 value={form.topic}
                 onChange={(e) =>
                   setForm((f) => ({ ...f, topic: e.target.value }))
@@ -171,8 +196,11 @@ ${form.message || "(write here)"}${diag}`;
             </div>
 
             <div>
-              <label className="block text-sm mb-1">Message</label>
+              <label className="block text-sm mb-1" htmlFor="support-message">
+                Message
+              </label>
               <Textarea
+                id="support-message"
                 rows={5}
                 value={form.message}
                 onChange={(e) =>

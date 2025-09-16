@@ -1,35 +1,34 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
+// client/src/pages/AdminDashboard.tsx
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
 import { site } from "@/config/site";
 import {
-  Store,
-  Users,
-  Package,
-  TrendingUp,
-  UserPlus,
-  Flag,
-  Settings,
-  Eye,
-  Check,
-  X,
-  Ban,
-  Mail,
-  RefreshCw,
+  Store, Users, Package, TrendingUp, UserPlus, Flag, Settings,
+  Eye, Check, X, Ban, Mail, RefreshCw,
 } from "lucide-react";
 
 /* ---------------- helpers ---------------- */
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) || ""; // same-origin fallback
+
+async function fetchJSON<T = any>(url: string): Promise<T> {
+  const res = await fetch(url, { credentials: "include" });
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try {
+      const t = await res.text();
+      msg = t || msg;
+    } catch {}
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
 const toNumber = (v: unknown) => {
   const n = typeof v === "number" ? v : parseFloat(String(v ?? "0"));
   return Number.isFinite(n) ? n : 0;
@@ -41,23 +40,64 @@ const formatK = (n: number) => {
   return `$${n.toFixed(2)}`;
 };
 
+type VendorRow = {
+  id: string;
+  storeName: string;
+  isApproved: boolean;
+  createdAt?: string | null;
+  userId?: string | null;
+  email?: string | null;
+  __requestOnly?: boolean;
+};
+
 /* ------------- Admin Dashboard ------------- */
 export default function AdminDashboard() {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   /* ------- data ------- */
-  const vendorsQuery = useQuery<any[]>({ queryKey: ["/api/vendors"] });
-  const ordersQuery = useQuery<any[]>({ queryKey: ["/api/orders"] });
-  const productsQuery = useQuery<any[]>({ queryKey: ["/api/products"] });
-
-  // Optional: some apps store applications in a separate endpoint.
-  // This query never throws; if the route doesn't exist, it returns [].
-  const vendorRequestsQuery = useQuery<any[]>({
-    queryKey: ["/api/vendor-requests"],
+  // Pull from the new admin endpoint and normalize to { isApproved: boolean }
+  const vendorsQuery = useQuery<VendorRow[]>({
+    queryKey: ["admin/vendors"],
     queryFn: async () => {
-      const res = await fetch("/api/vendor-requests", { credentials: "include" });
-      if (!res.ok) return []; // 404 or any error => ignore
-      return res.json();
+      const data = await fetchJSON<{ vendors: any[] }>(`${API_BASE}/api/admin/vendors`);
+      const items = Array.isArray(data?.vendors) ? data.vendors : [];
+      return items.map((v: any): VendorRow => ({
+        id: String(v.id),
+        storeName: v.storeName ?? v.store_name ?? "Vendor",
+        isApproved:
+          typeof v.isApproved === "boolean"
+            ? v.isApproved
+            : (v.status === "approved"),
+        createdAt: v.createdAt ?? v.created_at ?? null,
+        userId: v.userId ?? v.user_id ?? null,
+        email: v.email ?? v.contact_email ?? null,
+      }));
+    },
+    staleTime: 10_000,
+  });
+
+  const ordersQuery = useQuery<any[]>({
+    queryKey: ["orders"],
+    queryFn: () => fetchJSON(`${API_BASE}/api/orders`).catch(() => []),
+    retry: false,
+  });
+
+  const productsQuery = useQuery<any[]>({
+    queryKey: ["products"],
+    queryFn: () => fetchJSON(`${API_BASE}/api/products`).catch(() => []),
+    retry: false,
+  });
+
+  // Optional “requests” endpoint (ignore if it doesn’t exist)
+  const vendorRequestsQuery = useQuery<any[]>({
+    queryKey: ["vendor-requests"],
+    queryFn: async () => {
+      try {
+        return await fetchJSON(`${API_BASE}/api/vendor-requests`);
+      } catch {
+        return [];
+      }
     },
     retry: false,
   });
@@ -67,13 +107,21 @@ export default function AdminDashboard() {
   const orders = ordersQuery.data ?? [];
   const vendorRequests = vendorRequestsQuery.data ?? [];
 
-  // Merge vendor requests (if any) in as "pending vendors" without duping
-  const vendorIds = new Set(vendors.map((v: any) => String(v.id)));
-  const mergedVendors = [
+  // Merge vendor requests (if any) as pending items without duping by id
+  const vendorIds = new Set(vendors.map((v) => v.id));
+  const mergedVendors: VendorRow[] = [
     ...vendors,
     ...vendorRequests
       .filter((r: any) => !vendorIds.has(String(r.id)))
-      .map((r: any) => ({ ...r, isApproved: false, __requestOnly: true })),
+      .map((r: any): VendorRow => ({
+        id: String(r.id),
+        storeName: r.storeName ?? r.store_name ?? "Vendor",
+        isApproved: false,
+        createdAt: r.createdAt ?? r.created_at ?? null,
+        userId: r.userId ?? r.user_id ?? null,
+        email: r.email ?? r.contact_email ?? null,
+        __requestOnly: true,
+      })),
   ];
 
   /* ------- mutations ------- */
@@ -81,15 +129,26 @@ export default function AdminDashboard() {
     mutationFn: async ({
       vendorId,
       isApproved,
-    }: {
-      vendorId: string;
-      isApproved: boolean;
-    }) => {
-      await apiRequest("PUT", `/api/vendors/${vendorId}/approval`, { isApproved });
+    }: { vendorId: string; isApproved: boolean }) => {
+      const res = await fetch(`${API_BASE}/api/vendors/${vendorId}/approval`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isApproved }),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        let msg = `HTTP ${res.status}`;
+        try {
+          const t = await res.text();
+          msg = t || msg;
+        } catch {}
+        throw new Error(msg);
+      }
+      return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/vendor-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["admin/vendors"] });
+      queryClient.invalidateQueries({ queryKey: ["vendor-requests"] });
       toast({ title: "Success", description: "Vendor approval status updated" });
     },
     onError: () => {
@@ -135,7 +194,7 @@ export default function AdminDashboard() {
   }, 0);
   const platformRevenueDisplay = formatK(platformRevenueRaw);
 
-  const pendingVendors = mergedVendors.filter((v: any) => !v?.isApproved);
+  const pendingVendors = mergedVendors.filter((v) => !v.isApproved);
   const todaysOrders =
     orders.filter(
       (o: any) =>
@@ -165,7 +224,6 @@ export default function AdminDashboard() {
           </p>
         </div>
 
-        {/* Responsive controls: icon-only on small screens to avoid horizontal scroll */}
         <div className="flex items-center gap-2 shrink-0">
           <Button variant="ghost" size="sm" onClick={refreshAll} className="px-2 sm:px-3">
             <RefreshCw className="h-4 w-4" />
@@ -252,7 +310,6 @@ export default function AdminDashboard() {
         {/* Support */}
         <Card>
           <CardContent className="p-6">
-            {/* Stack on mobile to avoid horizontal overflow */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-sm text-muted-foreground">Support Email</p>
@@ -305,9 +362,7 @@ export default function AdminDashboard() {
           ) : vendorsQuery.isError ? (
             <ErrorMsg msg={(vendorsQuery.error as any)?.message} />
           ) : mergedVendors.length === 0 ? (
-            <div className="text-sm text-muted-foreground py-6">
-              No vendors yet.
-            </div>
+            <div className="text-sm text-muted-foreground py-6">No vendors yet.</div>
           ) : (
             <div className="overflow-x-auto">
               <Table>
@@ -321,7 +376,7 @@ export default function AdminDashboard() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {mergedVendors.map((vendor: any) => (
+                  {mergedVendors.map((vendor) => (
                     <TableRow key={vendor.id} data-testid={`row-vendor-${vendor.id}`}>
                       <TableCell>
                         <div className="flex items-center space-x-3">
@@ -330,7 +385,7 @@ export default function AdminDashboard() {
                           </div>
                           <div className="min-w-0">
                             <p className="font-medium truncate max-w-[180px] sm:max-w-none">
-                              {vendor.userId || vendor.email || "Vendor"}
+                              {vendor.userId || vendor.email || vendor.storeName || "Vendor"}
                             </p>
                             <p className="text-sm text-muted-foreground">
                               Vendor ID: {String(vendor.id).slice(0, 8)}
@@ -339,7 +394,11 @@ export default function AdminDashboard() {
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="font-medium">{vendor.storeName || "—"}</TableCell>
+
+                      <TableCell className="font-medium">
+                        {vendor.storeName || "—"}
+                      </TableCell>
+
                       <TableCell>
                         <Badge
                           variant={vendor.isApproved ? "secondary" : "destructive"}
@@ -348,11 +407,13 @@ export default function AdminDashboard() {
                           {vendor.isApproved ? "Approved" : "Pending"}
                         </Badge>
                       </TableCell>
+
                       <TableCell>
                         {vendor.createdAt
                           ? new Date(vendor.createdAt).toLocaleDateString()
                           : "—"}
                       </TableCell>
+
                       <TableCell>
                         <div className="flex space-x-2">
                           <Button variant="ghost" size="sm" data-testid={`button-view-vendor-${vendor.id}`}>
@@ -456,7 +517,7 @@ export default function AdminDashboard() {
                 <div className="flex justify-between items-center">
                   <span className="text-muted-foreground">Active Vendors</span>
                   <span className="font-medium" data-testid="text-active-vendors">
-                    {mergedVendors.filter((v: any) => v?.isApproved).length}
+                    {mergedVendors.filter((v) => v.isApproved).length}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">

@@ -1,6 +1,6 @@
 // client/src/pages/vendor-dashboard.tsx
 import { useEffect, useMemo, useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -8,57 +8,51 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
+  Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 
 import { useAuthStore } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest } from "@/lib/queryClient";
 import { insertProductSchema } from "@shared/schema";
 import {
-  Plus,
-  Package,
-  Clock,
-  DollarSign,
-  Star,
-  Edit,
-  Trash2,
-  Store,
-  CheckCircle2,
-  XCircle,
-  Loader2,
+  Plus, Package, Clock, DollarSign, Star, Edit, Trash2, Store,
+  CheckCircle2, XCircle, Loader2,
 } from "lucide-react";
+
+/* ---------------- helpers ---------------- */
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) || ""; // same-origin fallback
+
+async function fetchJSON<T = any>(url: string): Promise<T> {
+  const res = await fetch(url, { credentials: "include" });
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try {
+      const t = await res.text();
+      msg = t || msg;
+    } catch {}
+    throw new Error(msg);
+  }
+  return res.json();
+}
 
 /** ---------- Types ---------- */
 type Vendor = {
   id: string;
-  userId: string;
+  userId: string | null;
   storeName: string;
   isApproved: boolean;
-  createdAt: string;
+  createdAt: string | null;
+  email?: string | null;
 };
 
 type Order = {
@@ -86,11 +80,9 @@ type Product = {
 /** ---------- Form Schema (UI strings -> server numbers) ---------- */
 const productFormSchema = insertProductSchema
   .extend({
-    // Accept strings from inputs, we’ll convert before POST
     price: z.string().min(1, "Price is required"),
     stock: z.string().min(1, "Stock is required"),
   })
-  // vendorId & categoryId come from code, not user typing
   .partial({ vendorId: true, categoryId: true });
 
 type ProductForm = z.infer<typeof productFormSchema>;
@@ -99,6 +91,7 @@ export default function VendorDashboard() {
   const [isProductDialogOpen, setIsProductDialogOpen] = useState(false);
   const { user, isAuthenticated } = useAuthStore();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   /** ---------- Auth hint ---------- */
   useEffect(() => {
@@ -112,42 +105,83 @@ export default function VendorDashboard() {
   }, [isAuthenticated, toast]);
 
   /** ---------- Data: vendor, products, orders ---------- */
-  // IMPORTANT: our query keys are actual URLs your fetcher will GET
-  const vendorKey = user?.id ? [`/api/vendors/user/${user.id}`] : [];
-
-  const {
-    data: vendor,
-    isLoading: loadingVendor,
-    isError: vendorErr,
-  } = useQuery<Vendor>({
-    queryKey: vendorKey,
+  const vendorQuery = useQuery<Vendor>({
+    queryKey: ["vendor-by-user", user?.id],
     enabled: !!user?.id,
+    queryFn: async () => {
+      // Support either a raw vendor object OR { vendor: {...} }
+      const raw = await fetchJSON<any>(`${API_BASE}/api/vendors/user/${user!.id}`);
+      const v = raw?.vendor ?? raw;
+
+      // Normalize snake_case / alt fields → camelCase
+      const isApproved =
+        typeof v?.isApproved === "boolean"
+          ? v.isApproved
+          : typeof v?.is_approved === "boolean"
+            ? v.is_approved
+            : v?.status === "approved";
+
+      const vendor: Vendor = {
+        id: String(v?.id ?? ""),
+        userId: v?.userId ?? v?.user_id ?? null,
+        storeName: v?.storeName ?? v?.store_name ?? "Vendor",
+        isApproved: !!isApproved,
+        createdAt: v?.createdAt ?? v?.created_at ?? null,
+        email: v?.email ?? v?.contact_email ?? null,
+      };
+
+      if (!vendor.id) throw new Error("Vendor not found for this user");
+      return vendor;
+    },
+    retry: false,
   });
 
-  const productsKey = useMemo(
-    () => (vendor?.id ? [`/api/products?vendorId=${vendor.id}`] : []),
-    [vendor?.id],
-  );
+  const vendor = vendorQuery.data;
 
-  const { data: products = [], isLoading: loadingProducts } = useQuery<
-    Product[]
-  >({
-    queryKey: productsKey,
+  const productsQuery = useQuery<Product[]>({
+    queryKey: ["products-by-vendor", vendor?.id],
     enabled: !!vendor?.id,
+    queryFn: async () => {
+      const list = await fetchJSON<any[]>(`${API_BASE}/api/products?vendorId=${vendor!.id}`);
+      return (list ?? []).map((p) => ({
+        id: String(p.id),
+        vendorId: String(p.vendorId ?? p.vendor_id ?? vendor!.id),
+        name: p.name ?? p.title ?? "",
+        title: p.title,
+        price: p.price,
+        stock: p.stock ?? p.quantity ?? 0,
+        imageUrl: p.imageUrl ?? p.image_url ?? "",
+        description: p.description ?? "",
+        isActive: typeof p.isActive === "boolean" ? p.isActive : !!p.is_active,
+        createdAt: p.createdAt ?? p.created_at,
+      })) as Product[];
+    },
   });
 
-  const ordersKey = vendor?.id ? [`/api/orders/vendor/${vendor.id}`] : [];
-
-  const { data: orders = [] } = useQuery<Order[]>({
-    queryKey: ordersKey,
+  const ordersQuery = useQuery<Order[]>({
+    queryKey: ["orders-by-vendor", vendor?.id],
     enabled: !!vendor?.id,
+    queryFn: async () => {
+      const list = await fetchJSON<any[]>(`${API_BASE}/api/orders/vendor/${vendor!.id}`);
+      return (list ?? []).map((o) => ({
+        id: String(o.id),
+        vendorId: String(o.vendorId ?? o.vendor_id ?? vendor!.id),
+        customerId: String(o.customerId ?? o.customer_id ?? ""),
+        total: o.total,
+        status: o.status ?? "pending",
+        createdAt: o.createdAt ?? o.created_at ?? new Date().toISOString(),
+      })) as Order[];
+    },
   });
+
+  const products = productsQuery.data ?? [];
+  const orders = ordersQuery.data ?? [];
 
   /** ---------- Form ---------- */
   const form = useForm<ProductForm>({
     resolver: zodResolver(productFormSchema),
     defaultValues: {
-      vendorId: "", // set after vendor loads
+      vendorId: "",
       categoryId: "",
       name: "",
       description: "",
@@ -185,7 +219,7 @@ export default function VendorDashboard() {
       await apiRequest("POST", "/api/products", payload);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: productsKey });
+      queryClient.invalidateQueries({ queryKey: ["products-by-vendor", vendor?.id] });
       setIsProductDialogOpen(false);
       form.reset({
         vendorId: vendor?.id ?? "",
@@ -212,7 +246,7 @@ export default function VendorDashboard() {
       await apiRequest("DELETE", `/api/products/${productId}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: productsKey });
+      queryClient.invalidateQueries({ queryKey: ["products-by-vendor", vendor?.id] });
       toast({ title: "Product deleted successfully" });
     },
     onError: () => {
@@ -225,16 +259,13 @@ export default function VendorDashboard() {
 
   /** ---------- Derived stats ---------- */
   const totalProducts = products.length;
-
   const pendingOrders = orders.filter((o) => o.status === "pending").length;
 
   const now = new Date();
   const monthlyRevenue = orders
     .filter((o) => {
       const d = new Date(o.createdAt);
-      return (
-        d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
-      );
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
     })
     .reduce((sum, o) => sum + Number(o.total || 0), 0);
 
@@ -245,15 +276,10 @@ export default function VendorDashboard() {
     <div className="container mx-auto px-4 py-8">
       {/* Header */}
       <div className="mb-6">
-        <h1
-          className="text-3xl font-bold flex items-center gap-2"
-          data-testid="text-dashboard-title"
-        >
+        <h1 className="text-3xl font-bold flex items-center gap-2" data-testid="text-dashboard-title">
           <Store className="h-7 w-7" /> Vendor Dashboard
         </h1>
-        <p className="text-muted-foreground">
-          Manage your products, orders, and store performance
-        </p>
+        <p className="text-muted-foreground">Manage your products, orders, and store performance</p>
       </div>
 
       {/* Vendor Status */}
@@ -266,11 +292,11 @@ export default function VendorDashboard() {
 
           <div className="flex items-center gap-3">
             <span className="text-sm text-muted-foreground">Status</span>
-            {loadingVendor ? (
+            {vendorQuery.isLoading ? (
               <Badge variant="secondary" className="flex items-center gap-1">
                 <Loader2 className="h-4 w-4 animate-spin" /> Checking…
               </Badge>
-            ) : vendorErr || !vendor ? (
+            ) : vendorQuery.isError || !vendor ? (
               <Badge variant="destructive" className="flex items-center gap-1">
                 <XCircle className="h-4 w-4" /> Not a vendor yet
               </Badge>
@@ -294,10 +320,7 @@ export default function VendorDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Total Products</p>
-                <p
-                  className="text-2xl font-bold"
-                  data-testid="text-total-products"
-                >
+                <p className="text-2xl font-bold" data-testid="text-total-products">
                   {totalProducts}
                 </p>
               </div>
@@ -313,10 +336,7 @@ export default function VendorDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Pending Orders</p>
-                <p
-                  className="text-2xl font-bold"
-                  data-testid="text-pending-orders"
-                >
+                <p className="text-2xl font-bold" data-testid="text-pending-orders">
                   {pendingOrders}
                 </p>
               </div>
@@ -332,10 +352,7 @@ export default function VendorDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Monthly Revenue</p>
-                <p
-                  className="text-2xl font-bold"
-                  data-testid="text-monthly-revenue"
-                >
+                <p className="text-2xl font-bold" data-testid="text-monthly-revenue">
                   ${monthlyRevenue.toFixed(2)}
                 </p>
               </div>
@@ -351,10 +368,7 @@ export default function VendorDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Store Rating</p>
-                <p
-                  className="text-2xl font-bold"
-                  data-testid="text-store-rating"
-                >
+                <p className="text-2xl font-bold" data-testid="text-store-rating">
                   4.8
                 </p>
               </div>
@@ -368,10 +382,7 @@ export default function VendorDashboard() {
 
       {/* Actions */}
       <div className="flex flex-wrap gap-4 mb-8">
-        <Dialog
-          open={isProductDialogOpen}
-          onOpenChange={setIsProductDialogOpen}
-        >
+        <Dialog open={isProductDialogOpen} onOpenChange={setIsProductDialogOpen}>
           <DialogTrigger asChild>
             <Button data-testid="button-add-product" disabled={!canManage}>
               <Plus className="mr-2 h-4 w-4" />
@@ -385,9 +396,7 @@ export default function VendorDashboard() {
 
             {!canManage && (
               <div className="mb-4">
-                <Badge variant="destructive">
-                  Your store is pending admin approval
-                </Badge>
+                <Badge variant="destructive">Your store is pending admin approval</Badge>
               </div>
             )}
 
@@ -397,8 +406,7 @@ export default function VendorDashboard() {
                   if (!canManage) {
                     return toast({
                       title: "Not approved yet",
-                      description:
-                        "An admin must approve your store before adding products.",
+                      description: "An admin must approve your store before adding products.",
                       variant: "destructive",
                     });
                   }
@@ -413,11 +421,7 @@ export default function VendorDashboard() {
                     <FormItem>
                       <FormLabel>Product Name</FormLabel>
                       <FormControl>
-                        <Input
-                          placeholder="Enter product name"
-                          {...field}
-                          data-testid="input-product-name"
-                        />
+                        <Input placeholder="Enter product name" {...field} data-testid="input-product-name" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -470,12 +474,7 @@ export default function VendorDashboard() {
                       <FormItem>
                         <FormLabel>Stock Quantity</FormLabel>
                         <FormControl>
-                          <Input
-                            type="number"
-                            placeholder="0"
-                            {...field}
-                            data-testid="input-product-stock"
-                          />
+                          <Input type="number" placeholder="0" {...field} data-testid="input-product-stock" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -515,9 +514,7 @@ export default function VendorDashboard() {
                     disabled={createProductMutation.isPending || !canManage}
                     data-testid="button-create-product"
                   >
-                    {createProductMutation.isPending
-                      ? "Creating..."
-                      : "Create Product"}
+                    {createProductMutation.isPending ? "Creating..." : "Create Product"}
                   </Button>
                 </div>
               </form>
@@ -537,10 +534,10 @@ export default function VendorDashboard() {
           <CardTitle>Your Products</CardTitle>
         </CardHeader>
         <CardContent>
-          {loadingProducts ? (
-            <div className="text-sm text-muted-foreground">
-              Loading products…
-            </div>
+          {productsQuery.isLoading ? (
+            <div className="text-sm text-muted-foreground">Loading products…</div>
+          ) : products.length === 0 ? (
+            <div className="text-sm text-muted-foreground">No products yet.</div>
           ) : (
             <div className="overflow-x-auto">
               <Table>
@@ -554,21 +551,15 @@ export default function VendorDashboard() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {products.map((product: Product) => {
-                    const displayName =
-                      product.name ?? product.title ?? "(no name)";
+                  {products.map((product) => {
+                    const displayName = product.name ?? product.title ?? "(no name)";
                     const price = Number(product.price ?? 0);
                     const stock = product.stock ?? 0;
                     const img = product.imageUrl || "";
-                    const desc = product.description
-                      ? String(product.description)
-                      : "";
+                    const desc = product.description ? String(product.description) : "";
 
                     return (
-                      <TableRow
-                        key={product.id}
-                        data-testid={`row-product-${product.id}`}
-                      >
+                      <TableRow key={product.id} data-testid={`row-product-${product.id}`}>
                         <TableCell>
                           <div className="flex items-center space-x-3">
                             {img ? (
@@ -584,34 +575,22 @@ export default function VendorDashboard() {
                               <p className="font-medium">{displayName}</p>
                               {desc && (
                                 <p className="text-sm text-muted-foreground">
-                                  {desc.length > 50
-                                    ? `${desc.slice(0, 50)}…`
-                                    : desc}
+                                  {desc.length > 50 ? `${desc.slice(0, 50)}…` : desc}
                                 </p>
                               )}
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell className="font-medium">
-                          ${price.toFixed(2)}
-                        </TableCell>
+                        <TableCell className="font-medium">${price.toFixed(2)}</TableCell>
                         <TableCell>{String(stock)}</TableCell>
                         <TableCell>
-                          <Badge
-                            variant={
-                              product.isActive ? "secondary" : "destructive"
-                            }
-                          >
+                          <Badge variant={product.isActive ? "secondary" : "destructive"}>
                             {product.isActive ? "Active" : "Inactive"}
                           </Badge>
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              data-testid={`button-edit-${product.id}`}
-                            >
+                            <Button variant="ghost" size="sm" data-testid={`button-edit-${product.id}`}>
                               <Edit className="h-4 w-4" />
                             </Button>
                             <Button
@@ -632,17 +611,6 @@ export default function VendorDashboard() {
                       </TableRow>
                     );
                   })}
-
-                  {!products.length && !loadingProducts && (
-                    <TableRow>
-                      <TableCell
-                        colSpan={5}
-                        className="text-sm text-muted-foreground"
-                      >
-                        No products yet.
-                      </TableCell>
-                    </TableRow>
-                  )}
                 </TableBody>
               </Table>
             </div>
@@ -668,14 +636,9 @@ export default function VendorDashboard() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {orders.slice(0, 10).map((order) => (
-                  <TableRow
-                    key={order.id}
-                    data-testid={`row-order-${order.id}`}
-                  >
-                    <TableCell className="font-mono text-sm">
-                      #{order.id.substring(0, 8)}
-                    </TableCell>
+                {(orders ?? []).slice(0, 10).map((order) => (
+                  <TableRow key={order.id} data-testid={`row-order-${order.id}`}>
+                    <TableCell className="font-mono text-sm">#{order.id.substring(0, 8)}</TableCell>
                     <TableCell>{order.customerId}</TableCell>
                     <TableCell className="font-medium">
                       ${Number(order.total || 0).toFixed(2)}
@@ -686,25 +649,20 @@ export default function VendorDashboard() {
                           order.status === "delivered"
                             ? "secondary"
                             : order.status === "pending"
-                              ? "destructive"
-                              : "default"
+                            ? "destructive"
+                            : "default"
                         }
                       >
                         {order.status}
                       </Badge>
                     </TableCell>
-                    <TableCell>
-                      {new Date(order.createdAt).toLocaleDateString()}
-                    </TableCell>
+                    <TableCell>{new Date(order.createdAt).toLocaleDateString()}</TableCell>
                   </TableRow>
                 ))}
 
-                {!orders.length && (
+                {!orders?.length && (
                   <TableRow>
-                    <TableCell
-                      colSpan={5}
-                      className="text-sm text-muted-foreground"
-                    >
+                    <TableCell colSpan={5} className="text-sm text-muted-foreground">
                       No orders yet.
                     </TableCell>
                   </TableRow>

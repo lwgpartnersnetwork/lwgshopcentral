@@ -1,5 +1,6 @@
 // client/src/App.tsx
-import { Switch, Route } from "wouter";
+import { useEffect } from "react";
+import { Route } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
@@ -7,7 +8,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Navbar } from "@/components/navbar";
 import Footer from "@/components/footer";
 import { CartSidebar } from "@/components/cart-sidebar";
-import { CurrencyProvider } from "@/lib/currency"; // NLe/USD context
+import { CurrencyProvider } from "@/lib/currency";
 
 // Pages
 import Home from "@/pages/home";
@@ -22,19 +23,20 @@ import BecomeVendor from "@/pages/become-vendor";
 import Checkout from "@/pages/checkout";
 import NotFound from "@/pages/not-found";
 
-// --- Debug helper so we can see which route rendered ---
-import { useEffect } from "react";
+/** Type for your /products/:id route params */
+type ProductRouteParams = { id: string };
+
+/* --- Debug helper so we can see which route rendered --- */
 function RouteProbe({ tag }: { tag: string }) {
   useEffect(() => {
-    // Open DevTools Console to see route mounts
     console.log(`[route] ${tag} mounted`);
   }, [tag]);
   return null;
 }
 
-function Router() {
+function AppRoutes() {
   return (
-    <Switch>
+    <>
       <Route path="/">
         <>
           <RouteProbe tag="home /" />
@@ -57,10 +59,11 @@ function Router() {
       </Route>
 
       <Route path="/products/:id">
-        {(params) => (
+        {(params: ProductRouteParams) => (
           <>
             <RouteProbe tag={`product ${params.id}`} />
-            <ProductDetails params={params as any} />
+            {/* ✅ strong typing instead of `as any` */}
+            <ProductDetails params={params} />
           </>
         )}
       </Route>
@@ -80,10 +83,16 @@ function Router() {
         </>
       </Route>
 
-      {/* ✅ Admin alias so /admin also works */}
+      {/* ✅ Admin aliases so /admin and /admin/vendors both work */}
       <Route path="/admin">
         <>
           <RouteProbe tag="admin (alias)" />
+          <AdminDashboard />
+        </>
+      </Route>
+      <Route path="/admin/vendors">
+        <>
+          <RouteProbe tag="admin/vendors (alias)" />
           <AdminDashboard />
         </>
       </Route>
@@ -117,14 +126,14 @@ function Router() {
         </>
       </Route>
 
-      {/* Catch-all */}
-      <Route>
+      {/* Catch-all for 404s in wouter v3 */}
+      <Route path="*">
         <>
           <RouteProbe tag="not-found" />
           <NotFound />
         </>
       </Route>
-    </Switch>
+    </>
   );
 }
 
@@ -138,7 +147,7 @@ export default function App() {
           <div className="min-h-screen bg-background overflow-x-hidden">
             <Navbar />
             <main>
-              <Router />
+              <AppRoutes />
             </main>
             <Footer />
             <CartSidebar />

@@ -1,4 +1,6 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+/* Load Inter (must be the very first line) */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -23,11 +25,15 @@
   --border: hsl(214.3 31.8% 91.4%);
   --input: hsl(214.3 31.8% 91.4%);
   --ring: hsl(221.2 83.2% 53.3%);
+
+  /* Charts */
   --chart-1: hsl(221.2 83.2% 53.3%);
   --chart-2: hsl(158.1 64.4% 51.6%);
   --chart-3: hsl(42.0290 92.8251% 56.2745%);
   --chart-4: hsl(147.1429 78.5047% 41.9608%);
   --chart-5: hsl(341.4894 75.2000% 50.9804%);
+
+  /* Sidebar */
   --sidebar: hsl(210 40% 96%);
   --sidebar-foreground: hsl(222.2 84% 4.9%);
   --sidebar-primary: hsl(221.2 83.2% 53.3%);
@@ -36,9 +42,13 @@
   --sidebar-accent-foreground: hsl(210 40% 98%);
   --sidebar-border: hsl(214.3 31.8% 91.4%);
   --sidebar-ring: hsl(221.2 83.2% 53.3%);
-  --font-sans: 'Inter', system-ui, sans-serif;
-  --font-serif: Georgia, serif;
-  --font-mono: Menlo, monospace;
+
+  /* Fonts */
+  --font-sans: "Inter", system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
+  --font-serif: Georgia, Cambria, "Times New Roman", Times, serif;
+  --font-mono: Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+
+  /* Radius & shadows */
   --radius: 0.75rem;
   --shadow-2xs: 0px 2px 0px 0px hsl(221.2 83.2% 53.3% / 0.00);
   --shadow-xs: 0px 2px 0px 0px hsl(221.2 83.2% 53.3% / 0.00);
@@ -48,6 +58,8 @@
   --shadow-lg: 0px 2px 0px 0px hsl(221.2 83.2% 53.3% / 0.00), 0px 4px 6px -1px hsl(221.2 83.2% 53.3% / 0.00);
   --shadow-xl: 0px 2px 0px 0px hsl(221.2 83.2% 53.3% / 0.00), 0px 8px 10px -1px hsl(221.2 83.2% 53.3% / 0.00);
   --shadow-2xl: 0px 2px 0px 0px hsl(221.2 83.2% 53.3% / 0.00);
+
+  /* Misc */
   --tracking-normal: 0em;
   --spacing: 0.25rem;
 }
@@ -72,11 +84,15 @@
   --border: hsl(217.2 32.6% 17.5%);
   --input: hsl(217.2 32.6% 17.5%);
   --ring: hsl(224.3 76.3% 94.1%);
+
+  /* Charts (dark) */
   --chart-1: hsl(221.2 83.2% 53.3%);
   --chart-2: hsl(158.1 64.4% 51.6%);
   --chart-3: hsl(42.0290 92.8251% 56.2745%);
   --chart-4: hsl(147.1429 78.5047% 41.9608%);
   --chart-5: hsl(341.4894 75.2000% 50.9804%);
+
+  /* Sidebar (dark) */
   --sidebar: hsl(217.2 32.6% 17.5%);
   --sidebar-foreground: hsl(210 40% 98%);
   --sidebar-primary: hsl(221.2 83.2% 53.3%);
@@ -85,10 +101,14 @@
   --sidebar-accent-foreground: hsl(222.2 84% 4.9%);
   --sidebar-border: hsl(217.2 32.6% 17.5%);
   --sidebar-ring: hsl(221.2 83.2% 53.3%);
-  --font-sans: 'Inter', system-ui, sans-serif;
+
+  /* Fonts (same) */
+  --font-sans: "Inter", system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: Menlo, monospace;
+
   --radius: 0.75rem;
+
   --shadow-2xs: 0px 2px 0px 0px hsl(221.2 83.2% 53.3% / 0.00);
   --shadow-xs: 0px 2px 0px 0px hsl(221.2 83.2% 53.3% / 0.00);
   --shadow-sm: 0px 2px 0px 0px hsl(221.2 83.2% 53.3% / 0.00), 0px 1px 2px -1px hsl(221.2 83.2% 53.3% / 0.00);

@@ -9,7 +9,7 @@ import { Package, Tag, ArrowLeft, Search } from "lucide-react";
 
 /* ----------------------------- Types ----------------------------- */
 type Category = {
-  id: string;            // normalized to string in code (API may return number)
+  id: string; // normalized to string in code (API may return number)
   name?: string;
   title?: string;
   slug?: string;
@@ -55,15 +55,13 @@ export default function Categories() {
     queryKey: ["/api/categories"],
   });
 
-  // Normalize ids to string so UI is stable
-  const categories: Category[] = useMemo(
-    () =>
-      rawCategories.map((c) => ({
-        ...c,
-        id: String(c.id),
-      })),
-    [rawCategories]
-  );
+  // Normalize ids to string + optional sort by name/title for nicer UX
+  const categories: Category[] = useMemo(() => {
+    const list = rawCategories.map((c) => ({ ...c, id: String(c.id) }));
+    return list.sort((a, b) =>
+      (a.name ?? a.title ?? "").localeCompare(b.name ?? b.title ?? "")
+    );
+  }, [rawCategories]);
 
   /* 2) Load products for a selected category */
   const catId = selectedCategory?.id ?? null;
@@ -73,7 +71,8 @@ export default function Categories() {
     isLoading: loadingProducts,
     isError: prodError,
   } = useQuery<Product[]>({
-    queryKey: ["/api/products", catId ? { categoryId: catId } : {}],
+    // IMPORTANT: keep the queryKey as a URL string your defaultQueryFn can fetch.
+    queryKey: catId ? [`/api/products?categoryId=${encodeURIComponent(catId)}`] : [],
     enabled: !!catId,
   });
 
@@ -81,10 +80,9 @@ export default function Categories() {
   const filteredCategories = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return categories;
-    return categories.filter((c) => {
-      const label = (c.name ?? c.title ?? "").toLowerCase();
-      return label.includes(q);
-    });
+    return categories.filter((c) =>
+      (c.name ?? c.title ?? "").toLowerCase().includes(q)
+    );
   }, [categories, search]);
 
   /* ------------------------------ UI ----------------------------- */

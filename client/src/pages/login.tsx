@@ -1,19 +1,35 @@
-import { useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
-import { useAuthStore } from '@/lib/auth';
-import { useToast } from '@/hooks/use-toast';
-import { Link, useLocation } from 'wouter';
-import { Store, Eye, EyeOff } from 'lucide-react';
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { useAuthStore } from "@/lib/auth";
+import { useToast } from "@/hooks/use-toast";
+import { Link, useLocation } from "wouter";
+import { Store, Eye, EyeOff } from "lucide-react";
 
 const loginSchema = z.object({
-  email: z.string().email('Please enter a valid email address'),
-  password: z.string().min(1, 'Password is required'),
+  email: z
+    .string()
+    .email("Please enter a valid email address")
+    .transform((v) => v.trim().toLowerCase()),
+  password: z.string().min(1, "Password is required"),
 });
 
 type LoginForm = z.infer<typeof loginSchema>;
@@ -28,9 +44,10 @@ export default function Login() {
   const form = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      email: '',
-      password: '',
+      email: "",
+      password: "",
     },
+    mode: "onTouched",
   });
 
   const onSubmit = async (data: LoginForm) => {
@@ -38,15 +55,16 @@ export default function Login() {
     try {
       await login(data.email, data.password);
       toast({
-        title: 'Success',
-        description: 'Logged in successfully',
+        title: "Success",
+        description: "Logged in successfully",
       });
-      setLocation('/');
-    } catch (error) {
+      // If you ever add a ?next=/path query, you can read and use it here.
+      setLocation("/");
+    } catch {
       toast({
-        title: 'Error',
-        description: 'Invalid email or password',
-        variant: 'destructive',
+        title: "Error",
+        description: "Invalid email or password",
+        variant: "destructive",
       });
     } finally {
       setIsLoading(false);
@@ -68,6 +86,7 @@ export default function Login() {
             Sign in to your account to continue shopping
           </CardDescription>
         </CardHeader>
+
         <CardContent>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -80,15 +99,19 @@ export default function Login() {
                     <FormControl>
                       <Input
                         type="email"
-                        placeholder="Enter your email"
+                        inputMode="email"
+                        autoComplete="email"
+                        placeholder="you@example.com"
                         {...field}
                         data-testid="input-email"
+                        disabled={isLoading}
                       />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+
               <FormField
                 control={form.control}
                 name="password"
@@ -98,18 +121,22 @@ export default function Login() {
                     <FormControl>
                       <div className="relative">
                         <Input
-                          type={showPassword ? 'text' : 'password'}
+                          type={showPassword ? "text" : "password"}
                           placeholder="Enter your password"
+                          autoComplete="current-password"
                           {...field}
                           data-testid="input-password"
+                          disabled={isLoading}
                         />
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
                           className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                          onClick={() => setShowPassword(!showPassword)}
+                          onClick={() => setShowPassword((s) => !s)}
                           data-testid="button-toggle-password"
+                          aria-label={showPassword ? "Hide password" : "Show password"}
+                          tabIndex={-1}
                         >
                           {showPassword ? (
                             <EyeOff className="h-4 w-4" />
@@ -123,20 +150,21 @@ export default function Login() {
                   </FormItem>
                 )}
               />
-              <Button 
-                type="submit" 
-                className="w-full" 
+
+              <Button
+                type="submit"
+                className="w-full"
                 disabled={isLoading}
                 data-testid="button-login"
               >
-                {isLoading ? 'Signing in...' : 'Sign In'}
+                {isLoading ? "Signing in..." : "Sign In"}
               </Button>
             </form>
           </Form>
 
           <div className="mt-6 text-center">
             <p className="text-sm text-muted-foreground">
-              Don't have an account?{' '}
+              Don&apos;t have an account?{" "}
               <Link href="/register" className="text-primary hover:underline" data-testid="link-register">
                 Create one here
               </Link>

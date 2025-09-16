@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, type ComponentType, type SVGProps } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { ProductCard } from "@/components/product-card";
+import ProductCard from "@/components/product-card"; // ⬅️ default import
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Laptop,
@@ -26,56 +26,31 @@ type ApiCategory = {
   description?: string;
 };
 
+type Product = {
+  id: string | number;
+  name?: string;
+  title?: string;
+  imageUrl?: string;
+  price: number | string;
+  isActive?: boolean;
+  description?: string;
+  createdAt?: string;
+};
+
 /* --------------------- Fallback (if API empty) ------------------- */
 const fallbackCategories: Array<{
   id: string;
   name: string;
-  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+  icon: ComponentType<SVGProps<SVGSVGElement>>;
   color: string;
   slug: string;
 }> = [
-  {
-    id: "1",
-    name: "Electronics",
-    icon: Laptop,
-    color: "bg-primary/10 text-primary",
-    slug: "electronics",
-  },
-  {
-    id: "2",
-    name: "Fashion",
-    icon: Shirt,
-    color: "bg-accent/10 text-accent",
-    slug: "fashion",
-  },
-  {
-    id: "3",
-    name: "Home & Garden",
-    icon: HomeIcon,
-    color: "bg-primary/10 text-primary",
-    slug: "home-garden",
-  },
-  {
-    id: "4",
-    name: "Sports",
-    icon: Gamepad2,
-    color: "bg-accent/10 text-accent",
-    slug: "sports",
-  },
-  {
-    id: "5",
-    name: "Books",
-    icon: Book,
-    color: "bg-primary/10 text-primary",
-    slug: "books",
-  },
-  {
-    id: "6",
-    name: "Kids & Baby",
-    icon: Baby,
-    color: "bg-accent/10 text-accent",
-    slug: "kids-baby",
-  },
+  { id: "1", name: "Electronics", icon: Laptop, color: "bg-primary/10 text-primary", slug: "electronics" },
+  { id: "2", name: "Fashion", icon: Shirt, color: "bg-accent/10 text-accent", slug: "fashion" },
+  { id: "3", name: "Home & Garden", icon: HomeIcon, color: "bg-primary/10 text-primary", slug: "home-garden" },
+  { id: "4", name: "Sports", icon: Gamepad2, color: "bg-accent/10 text-accent", slug: "sports" },
+  { id: "5", name: "Books", icon: Book, color: "bg-primary/10 text-primary", slug: "books" },
+  { id: "6", name: "Kids & Baby", icon: Baby, color: "bg-accent/10 text-accent", slug: "kids-baby" },
 ];
 
 /* Map API icon keys to Lucide icons */
@@ -104,13 +79,31 @@ const iconFor = (key: string) => {
   }
 };
 
+/* Adapt API product -> shape ProductCard expects */
+function adaptForCard(p: Product) {
+  return {
+    id: String(p.id),
+    name: p.name ?? p.title ?? "(no name)",
+    imageUrl: p.imageUrl ?? "",
+    price: Number(p.price ?? 0),
+    // anything extra ProductCard supports can be added here
+    description: p.description ?? "",
+    isActive: p.isActive ?? true,
+  };
+}
+
 export default function Home() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   // Products (filtered when selectedCategory is set)
-  const { data: products = [], isLoading: productsLoading } = useQuery<any[]>({
+  const {
+    data: products = [],
+    isLoading: productsLoading,
+    isError: productsError,
+  } = useQuery<Product[]>({
+    // Keep query keys as full URL strings so your default fetcher works.
     queryKey: selectedCategory
-      ? ["/api/products", { categoryId: selectedCategory }]
+      ? [`/api/products?categoryId=${encodeURIComponent(selectedCategory)}`]
       : ["/api/products"],
   });
 
@@ -136,18 +129,11 @@ export default function Home() {
       {/* Hero Section */}
       <section className="bg-gradient-to-r from-primary to-accent text-primary-foreground py-20">
         <div className="container mx-auto px-4 text-center">
-          <h1
-            className="text-4xl md:text-6xl font-bold mb-6"
-            data-testid="text-hero-title"
-          >
+          <h1 className="text-4xl md:text-6xl font-bold mb-6" data-testid="text-hero-title">
             Discover Amazing Products
           </h1>
-          <p
-            className="text-xl mb-8 opacity-90 max-w-2xl mx-auto"
-            data-testid="text-hero-description"
-          >
-            Shop from thousands of verified vendors worldwide. Quality
-            guaranteed, fast shipping, best prices.
+          <p className="text-xl mb-8 opacity-90 max-w-2xl mx-auto" data-testid="text-hero-description">
+            Shop from thousands of verified vendors worldwide. Quality guaranteed, fast shipping, best prices.
           </p>
 
           {/* Go to categories */}
@@ -162,17 +148,13 @@ export default function Home() {
               <ArrowRight className="ml-2 h-4 w-4" />
             </Link>
           </Button>
-          {/* (Removed the centered logo under the CTA) */}
         </div>
       </section>
 
       {/* Categories */}
       <section className="py-16 bg-muted/30">
         <div className="container mx-auto px-4">
-          <h2
-            className="text-3xl font-bold text-center mb-12"
-            data-testid="text-categories-title"
-          >
+          <h2 className="text-3xl font-bold text-center mb-12" data-testid="text-categories-title">
             Shop by Category
           </h2>
 
@@ -192,9 +174,7 @@ export default function Home() {
                     >
                       <IconComponent className="h-6 w-6" />
                     </div>
-                    <h3 className="font-semibold text-card-foreground">
-                      {category.name}
-                    </h3>
+                    <h3 className="font-semibold text-card-foreground">{category.name}</h3>
                   </CardContent>
                 </Card>
               );
@@ -207,10 +187,7 @@ export default function Home() {
       <section className="py-16">
         <div className="container mx-auto px-4">
           <div className="flex justify-between items-center mb-12">
-            <h2
-              className="text-3xl font-bold"
-              data-testid="text-products-title"
-            >
+            <h2 className="text-3xl font-bold" data-testid="text-products-title">
               {selectedCategory ? "Filtered Products" : "Featured Products"}
             </h2>
             <div className="flex space-x-4">
@@ -243,19 +220,20 @@ export default function Home() {
                 </Card>
               ))}
             </div>
+          ) : productsError ? (
+            <div className="text-center py-12">
+              <p className="text-destructive text-lg">Failed to load products</p>
+            </div>
           ) : products.length === 0 ? (
             <div className="text-center py-12">
-              <p
-                className="text-muted-foreground text-lg"
-                data-testid="text-no-products"
-              >
+              <p className="text-muted-foreground text-lg" data-testid="text-no-products">
                 No products found
               </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-              {products.map((product: any) => (
-                <ProductCard key={product.id} product={product} />
+              {products.map((p) => (
+                <ProductCard key={String(p.id)} product={adaptForCard(p)} />
               ))}
             </div>
           )}
@@ -268,12 +246,8 @@ export default function Home() {
           <h2 className="text-3xl font-bold mb-6" data-testid="text-cta-title">
             Want to sell on our platform?
           </h2>
-          <p
-            className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto"
-            data-testid="text-cta-description"
-          >
-            Join thousands of successful vendors and reach millions of customers
-            worldwide.
+          <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto" data-testid="text-cta-description">
+            Join thousands of successful vendors and reach millions of customers worldwide.
           </p>
           <Button size="lg" asChild data-testid="button-become-vendor">
             <Link href="/become-vendor">

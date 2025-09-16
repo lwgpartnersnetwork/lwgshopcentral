@@ -2,36 +2,26 @@
 import "dotenv/config";
 import { z } from "zod";
 
-const EnvSchema = z.object({
+const schema = z.object({
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+
+  // Server
   PORT: z.coerce.number().default(5000),
-  DATABASE_URL: z.string(),
+  SESSION_SECRET: z.string().min(10, "SESSION_SECRET is required and should be long"),
 
-  SUPPORT_EMAIL: z.string().email().default("info@lwgpartnersnetwork.com"),
-  SUPPORT_PHONE: z.string().optional(),
+  // Database (required)
+  DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
 
-  // SMTP
+  // SMTP email (optional — if missing, emails are skipped)
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().optional(),
-  SMTP_SECURE: z
-    .union([z.string(), z.boolean()])
-    .optional()
-    .transform((v) => (typeof v === "string" ? v === "true" : !!v)),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
+  SMTP_SECURE: z.coerce.boolean().optional(), // true for 465, false for 587
+
+  // Optional display/support addresses
   FROM_EMAIL: z.string().optional(),
-
-  // WhatsApp / Twilio
-  TWILIO_ACCOUNT_SID: z.string().optional(),
-  TWILIO_AUTH_TOKEN: z.string().optional(),
-  TWILIO_WHATSAPP_FROM: z.string().optional(),
-
-  // App URLs / CORS
-  APP_URL: z.string().optional(),
-  CORS_ORIGINS: z.string().optional(),
-
-  // Currency defaults
-  DEFAULT_CURRENCY: z.string().default("NLE"),
-  USD_RATE: z.coerce.number().default(25),
+  SUPPORT_EMAIL: z.string().optional(),
 });
 
-export const env = EnvSchema.parse(process.env);
+export const env = schema.parse(process.env);

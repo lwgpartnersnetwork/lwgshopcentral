@@ -30,7 +30,7 @@ type Product = {
   name: string;
   price: number | string;
   imageUrl?: string;
-  vendorId?: string;
+  vendorId?: string | null;
 };
 
 type CheckoutForm = {
@@ -83,7 +83,7 @@ export default function Checkout() {
           quantity: ci.quantity,
           unitPrice: unit,
           lineTotal: unit * ci.quantity,
-          vendorId: (p as any).vendorId ?? null,
+          vendorId: p.vendorId ?? null,
         };
       })
       .filter(Boolean) as Array<{
@@ -105,17 +105,28 @@ export default function Checkout() {
 
   // Form state (seed from localStorage for convenience)
   const [form, setForm] = useState<CheckoutForm>(() => {
-    const saved = localStorage.getItem("lwg_checkout_contact");
-    return (
-      (saved && JSON.parse(saved)) || {
+    try {
+      const saved = localStorage.getItem("lwg_checkout_contact");
+      return (
+        (saved && JSON.parse(saved)) || {
+          fullName: "",
+          email: "",
+          phone: "",
+          address: "",
+          city: "",
+          notes: "",
+        }
+      );
+    } catch {
+      return {
         fullName: "",
         email: "",
         phone: "",
         address: "",
         city: "",
         notes: "",
-      }
-    );
+      };
+    }
   });
 
   const [method, setMethod] = useState<PaymentMethod>("orange_money");
@@ -132,7 +143,9 @@ export default function Checkout() {
   const saveContact = (next: Partial<CheckoutForm>) => {
     const updated = { ...form, ...next };
     setForm(updated);
-    localStorage.setItem("lwg_checkout_contact", JSON.stringify(updated));
+    try {
+      localStorage.setItem("lwg_checkout_contact", JSON.stringify(updated));
+    } catch {}
   };
 
   /** ---------- Payment instructions (edit to your real accounts) ---------- */
@@ -170,7 +183,12 @@ export default function Checkout() {
   const createOrder = useMutation({
     mutationFn: async (payload: any) => {
       const res = await apiRequest("POST", "/api/orders", payload);
-      return res.json().catch(() => ({}));
+      // Even if server returns no body, we continue the flow
+      try {
+        return await res.json();
+      } catch {
+        return {};
+      }
     },
   });
 
@@ -208,8 +226,7 @@ export default function Checkout() {
       await createOrder.mutateAsync(payload);
       setOrderRef(ref);
       toast({ title: "Order placed", description: `Reference: ${ref}` });
-      // (Optionally) clear cart now—or after user sends receipt
-      clearCart();
+      clearCart(); // clear now; remove this if you want to clear later
     } catch (e: any) {
       // Still allow user to send receipt
       setOrderRef(ref);
@@ -227,7 +244,9 @@ export default function Checkout() {
   const receiptLines = lines
     .map(
       (l) =>
-        `• ${l.name}  x${l.quantity}  @ ${format(l.unitPrice)} = ${format(l.lineTotal)}`
+        `• ${l.name}  x${l.quantity}  @ ${format(l.unitPrice)} = ${format(
+          l.lineTotal,
+        )}`,
     )
     .join("\n");
 
@@ -244,14 +263,14 @@ export default function Checkout() {
     `Notes: ${form.notes || "-"}`;
 
   const emailHref = `mailto:${site.supportEmail}?cc=${encodeURIComponent(
-    form.email
+    form.email,
   )}&subject=${encodeURIComponent(
-    `Order ${orderRef ?? "(pending)"} — ${site.shortName}`
+    `Order ${orderRef ?? "(pending)"} — ${site.shortName}`,
   )}&body=${encodeURIComponent(receiptText)}`;
 
   const waHref = site.supportPhone
     ? `https://wa.me/${digits(site.supportPhone)}?text=${encodeURIComponent(
-        `*${site.name}* — Order ${orderRef ?? "(pending)"}\n\n${receiptText}`
+        `*${site.name}* — Order ${orderRef ?? "(pending)"}\n\n${receiptText}`,
       )}`
     : undefined;
 
@@ -349,13 +368,15 @@ export default function Checkout() {
               <CardTitle>Payment Method</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {([
-                "orange_money",
-                "afrimoney",
-                "bank_transfer",
-                "cash_on_delivery",
-                "usd_card",
-              ] as PaymentMethod[]).map((m) => {
+              {(
+                [
+                  "orange_money",
+                  "afrimoney",
+                  "bank_transfer",
+                  "cash_on_delivery",
+                  "usd_card",
+                ] as PaymentMethod[]
+              ).map((m) => {
                 const active = method === m;
                 const info = payInfo[m];
                 return (
@@ -387,9 +408,7 @@ export default function Checkout() {
                       <div className="px-4 pb-4 pt-2 text-sm space-y-2">
                         {"number" in info && info.number && (
                           <div className="flex items-center gap-2">
-                            <span className="text-muted-foreground">
-                              Pay to:
-                            </span>
+                            <span className="text-muted-foreground">Pay to:</span>
                             <span className="font-medium">
                               {info.acctName} — {info.number}
                             </span>
@@ -400,8 +419,12 @@ export default function Checkout() {
                               onClick={() =>
                                 navigator.clipboard
                                   .writeText(info.number!)
-                                  .then(() =>
-                                    toast({ title: "Number copied" })
+                                  .then(() => toast({ title: "Number copied" }))
+                                  .catch(() =>
+                                    toast({
+                                      title: "Copy failed",
+                                      description: "You can copy manually.",
+                                    }),
                                   )
                               }
                             >
@@ -412,23 +435,15 @@ export default function Checkout() {
                         {"bank" in info && (
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                             <div>
-                              <span className="text-muted-foreground">
-                                Bank:
-                              </span>{" "}
+                              <span className="text-muted-foreground">Bank:</span>{" "}
                               <span className="font-medium">{info.bank}</span>
                             </div>
                             <div>
-                              <span className="text-muted-foreground">
-                                Account:
-                              </span>{" "}
-                              <span className="font-medium">
-                                {info.acctName}
-                              </span>
+                              <span className="text-muted-foreground">Account:</span>{" "}
+                              <span className="font-medium">{info.acctName}</span>
                             </div>
                             <div>
-                              <span className="text-muted-foreground">
-                                No.:
-                              </span>{" "}
+                              <span className="text-muted-foreground">No.:</span>{" "}
                               <span className="font-medium">{info.acctNo}</span>
                             </div>
                           </div>
@@ -459,9 +474,7 @@ export default function Checkout() {
                       className="w-12 h-12 rounded object-cover border"
                     />
                     <div className="flex-1">
-                      <p className="text-sm font-medium line-clamp-1">
-                        {l.name}
-                      </p>
+                      <p className="text-sm font-medium line-clamp-1">{l.name}</p>
                       <p className="text-xs text-muted-foreground">
                         {l.quantity} × {format(l.unitPrice)}
                       </p>
@@ -498,20 +511,15 @@ export default function Checkout() {
               {orderRef && (
                 <div className="space-y-2">
                   <div className="rounded-md border p-3 text-sm">
-                    <p className="font-medium">
-                      Order placed — Reference: {orderRef}
-                    </p>
+                    <p className="font-medium">Order placed — Reference: {orderRef}</p>
                     <p className="text-muted-foreground">
-                      Send the receipt to confirm payment and speed up
-                      processing.
+                      Send the receipt to confirm payment and speed up processing.
                     </p>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <Button asChild variant="outline">
-                      <a href={emailHref}>
-                        Email receipt (admin + you)
-                      </a>
+                      <a href={emailHref}>Email receipt (admin + you)</a>
                     </Button>
                     {waHref ? (
                       <Button asChild variant="outline">
@@ -527,11 +535,7 @@ export default function Checkout() {
                     Your info is used only for order processing.
                   </div>
 
-                  <Button
-                    variant="ghost"
-                    className="w-full"
-                    onClick={() => setLocation("/")}
-                  >
+                  <Button variant="ghost" className="w-full" onClick={() => setLocation("/")}>
                     Back to Home
                   </Button>
                 </div>
