@@ -1,10 +1,6 @@
 // server/index.ts
 import "dotenv/config";
-import express, {
-  type Request,
-  type Response,
-  type NextFunction,
-} from "express";
+import express, { type Request, type Response, type NextFunction } from "express";
 import path from "node:path";
 import fs from "node:fs";
 import cors from "cors";
@@ -20,37 +16,55 @@ import vendorsRouter from "./routes/vendors";
 import vendorRequestsRouter from "./routes/vendor-requests"; // compat for older UI
 import adminRouter from "./routes/admin"; // exposes /api/admin/vendors/* and /api/vendors/:id/approval
 
+/* -----------------------------------------------------------------------------
+   App
+----------------------------------------------------------------------------- */
 const app = express();
 
-// Basic hardening + body parsing
+/** Basic hardening + body parsing */
 app.set("trust proxy", 1);
 app.disable("x-powered-by");
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: false }));
 
-// CORS (allow list via CORS_ORIGINS="http://localhost:5173,https://example.com")
-const corsEnv =
-  // support both optional env schema field and raw process env
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ((env as any).CORS_ORIGINS as string | undefined) ??
-  process.env.CORS_ORIGINS ??
-  "";
-const corsOrigins = corsEnv
-  .split(",")
+/* -----------------------------------------------------------------------------
+   CORS (allow-list)
+   - CORS_ORIGINS="https://www.example.com,https://example.com"
+   - or WEB_ORIGIN_1..WEB_ORIGIN_5 individually
+   If none are set, allow all (useful while bootstrapping).
+----------------------------------------------------------------------------- */
+const rawOrigins: string[] = [
+  // support both env schema and raw process env
+  ((env as unknown as { CORS_ORIGINS?: string }).CORS_ORIGINS ?? process.env.CORS_ORIGINS ?? ""),
+  process.env.WEB_ORIGIN_1 ?? "",
+  process.env.WEB_ORIGIN_2 ?? "",
+  process.env.WEB_ORIGIN_3 ?? "",
+  process.env.WEB_ORIGIN_4 ?? "",
+  process.env.WEB_ORIGIN_5 ?? "",
+];
+
+const corsOrigins = rawOrigins
+  .flatMap((s) => s.split(",")) // support CSV in CORS_ORIGINS
   .map((s) => s.trim())
   .filter(Boolean);
 
 app.use(
   cors({
-    origin: corsOrigins.length ? corsOrigins : true,
+    // If no allow-list provided -> allow all (easy onboarding).
+    origin(origin, cb) {
+      if (!origin) return cb(null, true); // non-browser clients (curl/postman)
+      if (corsOrigins.length === 0) return cb(null, true);
+      if (corsOrigins.includes(origin)) return cb(null, true);
+      cb(new Error("Not allowed by CORS"));
+    },
     credentials: true,
   }),
 );
 
-// Helmet (basic)
+/** Helmet base protections */
 app.use(helmet());
 
-// Tiny API logger
+/** Tiny API logger */
 app.use("/api", (req, res, next) => {
   const t = Date.now();
   res.on("finish", () => {
@@ -59,20 +73,24 @@ app.use("/api", (req, res, next) => {
   next();
 });
 
-// Health
+/* -----------------------------------------------------------------------------
+   Health
+----------------------------------------------------------------------------- */
 app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
 
-// API routes
+/* -----------------------------------------------------------------------------
+   API routes
+----------------------------------------------------------------------------- */
 app.use("/api", catalogRouter);
 app.use("/api/checkout", checkoutRouter);
 app.use("/api/vendors", vendorsRouter);
 app.use("/api/vendor-requests", vendorRequestsRouter); // compat path for Admin
 app.use("/api", adminRouter); // also exposes /api/vendors/:id/approval
 
-// 404 for API
+/** 404 for API */
 app.use("/api", (_req, res) => res.status(404).json({ message: "Not Found" }));
 
-// Centralized error handler
+/** Centralized error handler */
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   const anyErr = err as { status?: number; statusCode?: number; message?: string };
   const status = Number(anyErr?.status || anyErr?.statusCode || 500);
@@ -84,13 +102,16 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   res.status(status).json({ message });
 });
 
-// Bootstrap HTTP server + dev/prod asset handling
+/* -----------------------------------------------------------------------------
+   Bootstrap HTTP server + dev/prod asset handling
+----------------------------------------------------------------------------- */
 (async () => {
   const server = createServer(app);
 
   if (app.get("env") === "development") {
     await setupVite(app, server);
   } else {
+    // Serve built client assets
     serveStatic(app);
 
     // SPA fallback for non-/api routes
@@ -102,28 +123,26 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     });
   }
 
-  const port = Number(env.PORT || 5000);
-  // On Windows some Node setups can throw ENOTSUP with 0.0.0.0 + reusePort.
-  // Bind to localhost by default; allow override via HOST if you need to expose.
-  const host = process.env.HOST || "127.0.0.1";
+  const port = Number(process.env.PORT ?? env.PORT ?? 5000);
+  // Render expects 0.0.0.0; this also works fine locally.
+  const host = process.env.HOST || "0.0.0.0";
 
-  // Simple, compatible listen (no reusePort)
   server.listen(port, host, () => {
     log(`API listening on http://${host}:${port}`);
-    if (!corsOrigins.length) {
-      log("CORS: * (all origins) — set CORS_ORIGINS to restrict");
+    if (corsOrigins.length === 0) {
+      log("CORS: * (all origins) — set CORS_ORIGINS or WEB_ORIGIN_1..5 to restrict");
     } else {
       log(`CORS allow list: ${corsOrigins.join(", ")}`);
     }
   });
 
-  // Optional: surface unhandled errors during development
+  // Optional: surface unhandled errors
   process.on("unhandledRejection", (reason) => {
     // eslint-disable-next-line no-console
     console.error("Unhandled Rejection:", reason);
   });
-  process.on("uncaughtException", (err) => {
+  process.on("uncaughtException", (e) => {
     // eslint-disable-next-line no-console
-    console.error("Uncaught Exception:", err);
+    console.error("Uncaught Exception:", e);
   });
 })();

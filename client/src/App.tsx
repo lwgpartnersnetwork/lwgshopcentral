@@ -1,7 +1,8 @@
 // client/src/App.tsx
 import { useEffect } from "react";
-import { Route } from "wouter";
+import { Route, useLocation } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
+
 import { queryClient } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -32,6 +33,15 @@ function RouteProbe({ tag }: { tag: string }) {
   return null;
 }
 
+/* --- Scroll to top on route change --- */
+function ScrollToTop() {
+  const [location] = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location]);
+  return null;
+}
+
 function AppRoutes() {
   return (
     <>
@@ -56,7 +66,7 @@ function AppRoutes() {
         </>
       </Route>
 
-      {/* Product details reads :id via useParams inside the page, so no props here */}
+      {/* Product page reads :id with useParams inside the component */}
       <Route path="/products/:id">
         {() => (
           <>
@@ -73,7 +83,7 @@ function AppRoutes() {
         </>
       </Route>
 
-      {/* Admin dashboard (original path) */}
+      {/* Admin dashboard (primary route) */}
       <Route path="/admin-dashboard">
         <>
           <RouteProbe tag="admin-dashboard" />
@@ -81,7 +91,7 @@ function AppRoutes() {
         </>
       </Route>
 
-      {/* Admin aliases so /admin and /admin/vendors both work */}
+      {/* Admin aliases */}
       <Route path="/admin">
         <>
           <RouteProbe tag="admin (alias)" />
@@ -123,7 +133,7 @@ function AppRoutes() {
         </>
       </Route>
 
-      {/* Catch-all 404 (wouter v3) */}
+      {/* Catch-all 404 */}
       <Route path="*">
         <>
           <RouteProbe tag="not-found" />
@@ -143,6 +153,7 @@ export default function App() {
           <div className="min-h-screen bg-background overflow-x-hidden">
             <Navbar />
             <main>
+              <ScrollToTop />
               <AppRoutes />
             </main>
             <Footer />

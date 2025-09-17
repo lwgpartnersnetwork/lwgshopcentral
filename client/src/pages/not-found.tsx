@@ -1,5 +1,7 @@
+// client/src/pages/not-found.tsx
+import * as React from "react";
 import { Link, useLocation } from "wouter";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -13,10 +15,12 @@ export default function NotFound() {
           <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
             <AlertCircle className="h-6 w-6 text-destructive" />
           </div>
-          <CardTitle className="text-2xl">404 — Page Not Found</CardTitle>
+          <CardTitle className="text-2xl" data-testid="text-404-title">
+            404 — Page Not Found
+          </CardTitle>
         </CardHeader>
 
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-5">
           <p className="text-sm text-muted-foreground text-center">
             We couldn’t find the page you were looking for.
             {path ? (
@@ -39,6 +43,17 @@ export default function NotFound() {
             </Button>
             <Button asChild variant="ghost" data-testid="button-contact-support">
               <Link href="/support">Contact Support</Link>
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => window.history.back()}
+              className="hidden sm:inline-flex"
+              data-testid="button-go-back"
+              title="Go back"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back
             </Button>
           </div>
 

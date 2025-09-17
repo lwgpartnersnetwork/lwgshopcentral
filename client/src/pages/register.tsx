@@ -1,3 +1,4 @@
+// client/src/pages/register.tsx
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -29,7 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-import { Store, Eye, EyeOff } from "lucide-react";
+import { Store, Eye, EyeOff, Loader2 } from "lucide-react";
 import { useAuthStore } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 
@@ -37,7 +38,10 @@ import { useToast } from "@/hooks/use-toast";
 const registerSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
-  email: z.string().email("Please enter a valid email address"),
+  email: z
+    .string()
+    .email("Please enter a valid email address")
+    .transform((v) => v.trim().toLowerCase()),
   password: z.string().min(6, "Password must be at least 6 characters"),
   role: z.enum(["customer", "vendor"], {
     required_error: "Please select an account type",
@@ -65,6 +69,7 @@ export default function Register() {
       password: "",
       role: "customer",
     },
+    mode: "onTouched",
   });
 
   const onSubmit = async (data: RegisterForm) => {
@@ -76,13 +81,20 @@ export default function Register() {
         description: "Account created successfully",
       });
 
-      // If vendors should immediately apply for a store, you can deep-link:
-      // setLocation(data.role === "vendor" ? "/become-vendor" : "/");
-      setLocation("/");
+      // If they’re a vendor, send them to start the vendor flow.
+      if (data.role === "vendor") {
+        setLocation("/become-vendor");
+      } else {
+        // For customers, go to login (works whether register() logs in or not)
+        setLocation("/login");
+      }
     } catch (error: any) {
+      // Try to surface backend message when possible
+      const raw = String(error?.message || "");
       const msg =
-        error?.message ||
-        "Failed to create account. Please check your details and try again.";
+        /already exists|duplicate/i.test(raw)
+          ? "An account with this email already exists."
+          : raw || "Failed to create account. Please try again.";
       toast({ title: "Error", description: msg, variant: "destructive" });
     } finally {
       setIsLoading(false);
@@ -118,8 +130,10 @@ export default function Register() {
                       <FormControl>
                         <Input
                           placeholder="John"
+                          autoComplete="given-name"
                           {...field}
                           data-testid="input-first-name"
+                          disabled={isLoading}
                         />
                       </FormControl>
                       <FormMessage />
@@ -136,8 +150,10 @@ export default function Register() {
                       <FormControl>
                         <Input
                           placeholder="Doe"
+                          autoComplete="family-name"
                           {...field}
                           data-testid="input-last-name"
+                          disabled={isLoading}
                         />
                       </FormControl>
                       <FormMessage />
@@ -155,9 +171,12 @@ export default function Register() {
                     <FormControl>
                       <Input
                         type="email"
+                        inputMode="email"
+                        autoComplete="email"
                         placeholder="john@example.com"
                         {...field}
                         data-testid="input-email"
+                        disabled={isLoading}
                       />
                     </FormControl>
                     <FormMessage />
@@ -176,8 +195,10 @@ export default function Register() {
                         <Input
                           type={showPassword ? "text" : "password"}
                           placeholder="Create a password"
+                          autoComplete="new-password"
                           {...field}
                           data-testid="input-password"
+                          disabled={isLoading}
                         />
                         <Button
                           type="button"
@@ -186,6 +207,9 @@ export default function Register() {
                           className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                           onClick={() => setShowPassword((s) => !s)}
                           data-testid="button-toggle-password"
+                          aria-label={showPassword ? "Hide password" : "Show password"}
+                          tabIndex={-1}
+                          disabled={isLoading}
                         >
                           {showPassword ? (
                             <EyeOff className="h-4 w-4" />
@@ -206,14 +230,21 @@ export default function Register() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Account Type</FormLabel>
-                    <Select value={field.value} onValueChange={field.onChange}>
+                    <Select
+                      value={field.value}
+                      onValueChange={field.onChange}
+                      disabled={isLoading}
+                    >
                       <FormControl>
                         <SelectTrigger data-testid="select-role">
                           <SelectValue placeholder="Select account type" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="customer" data-testid="option-customer">
+                        <SelectItem
+                          value="customer"
+                          data-testid="option-customer"
+                        >
                           Customer
                         </SelectItem>
                         <SelectItem value="vendor" data-testid="option-vendor">
@@ -232,7 +263,14 @@ export default function Register() {
                 disabled={isLoading}
                 data-testid="button-register"
               >
-                {isLoading ? "Creating Account..." : "Create Account"}
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Creating Account…
+                  </>
+                ) : (
+                  "Create Account"
+                )}
               </Button>
             </form>
           </Form>

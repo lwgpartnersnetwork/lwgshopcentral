@@ -1,7 +1,9 @@
+// client/src/pages/login.tsx
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -22,7 +24,7 @@ import { Input } from "@/components/ui/input";
 import { useAuthStore } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
-import { Store, Eye, EyeOff } from "lucide-react";
+import { Store, Eye, EyeOff, Loader2 } from "lucide-react";
 
 const loginSchema = z.object({
   email: z
@@ -43,10 +45,7 @@ export default function Login() {
 
   const form = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
-    defaultValues: {
-      email: "",
-      password: "",
-    },
+    defaultValues: { email: "", password: "" },
     mode: "onTouched",
   });
 
@@ -54,13 +53,9 @@ export default function Login() {
     setIsLoading(true);
     try {
       await login(data.email, data.password);
-      toast({
-        title: "Success",
-        description: "Logged in successfully",
-      });
-      // If you ever add a ?next=/path query, you can read and use it here.
+      toast({ title: "Success", description: "Logged in successfully" });
       setLocation("/");
-    } catch {
+    } catch (e) {
       toast({
         title: "Error",
         description: "Invalid email or password",
@@ -157,7 +152,14 @@ export default function Login() {
                 disabled={isLoading}
                 data-testid="button-login"
               >
-                {isLoading ? "Signing in..." : "Sign In"}
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Signing in…
+                  </>
+                ) : (
+                  "Sign In"
+                )}
               </Button>
             </form>
           </Form>
@@ -165,7 +167,11 @@ export default function Login() {
           <div className="mt-6 text-center">
             <p className="text-sm text-muted-foreground">
               Don&apos;t have an account?{" "}
-              <Link href="/register" className="text-primary hover:underline" data-testid="link-register">
+              <Link
+                href="/register"
+                className="text-primary hover:underline"
+                data-testid="link-register"
+              >
                 Create one here
               </Link>
             </p>

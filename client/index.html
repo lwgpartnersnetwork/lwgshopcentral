@@ -3,11 +3,11 @@
   <head>
     <meta charset="utf-8" />
 
-    <!-- Mobile & scaling -->
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1, maximum-scale=1"
-    />
+    <!-- Make routes work when directly loaded (SPA) -->
+    <base href="/" />
+
+    <!-- Mobile & scaling (allow zoom for accessibility) -->
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
 
     <title>LWG MarketPlace</title>
     <meta
@@ -15,32 +15,47 @@
       content="LWG MarketPlace — Trusted vendors, real value. Shop from thousands of verified vendors worldwide."
     />
     <meta name="theme-color" content="#0a1a6b" />
+    <meta name="color-scheme" content="light dark" />
 
-    <!-- Favicons (place these files in client/public) -->
-    <link
-      rel="icon"
-      type="image/png"
-      sizes="16x16"
-      href="/lwg-favicon.png_1757641803765.png"
-    />
+    <!-- Canonical (swap to your final custom domain when live) -->
+    <link rel="canonical" href="https://www.lwgpartnersnetwork.com/" />
+
+    <!-- Favicons (ensure these files exist in client/public) -->
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link
       rel="icon"
       type="image/png"
       sizes="32x32"
       href="/lwg-favicon.png_1757641803765.png"
     />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="16x16"
+      href="/lwg-favicon.png_1757641803765.png"
+    />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="shortcut icon" href="/lwg-favicon.png_1757641803765.png" />
 
-    <!-- Social preview -->
+    <!-- Open Graph / Twitter preview -->
     <meta property="og:title" content="LWG MarketPlace" />
     <meta
       property="og:description"
       content="Shop from thousands of verified vendors worldwide."
     />
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="/" />
+    <meta property="og:url" content="https://www.lwgpartnersnetwork.com/" />
+    <meta property="og:image" content="/og-image.jpg" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="LWG MarketPlace" />
+    <meta
+      name="twitter:description"
+      content="Shop from thousands of verified vendors worldwide."
+    />
+    <meta name="twitter:image" content="/og-image.jpg" />
 
-    <!-- Fonts (Inter matches your Tailwind CSS var(--font-sans)) -->
+    <!-- Fonts (Inter matches Tailwind's default sans stack) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -51,6 +66,12 @@
 
   <body>
     <div id="root"></div>
+
+    <noscript>
+      <strong
+        >We're sorry but LWG MarketPlace requires JavaScript to run.</strong
+      >
+    </noscript>
 
     <!-- Vite entry -->
     <script type="module" src="/src/main.tsx"></script>

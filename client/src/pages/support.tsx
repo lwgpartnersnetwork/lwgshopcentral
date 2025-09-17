@@ -1,3 +1,4 @@
+// client/src/pages/support.tsx
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
@@ -8,14 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { site } from "@/config/site";
-import {
-  HeartPulse,
-  Mail,
-  Home,
-  Tag,
-  Store,
-  Phone,
-} from "lucide-react";
+import { HeartPulse, Mail, Home, Tag, Store, Phone } from "lucide-react";
 
 type Health = { status: string } | undefined;
 
@@ -75,7 +69,7 @@ Message:
 ${form.message || "(write here)"}${diag}`;
 
     window.location.href = `mailto:${site.supportEmail}?subject=${encodeURIComponent(
-      subject
+      subject,
     )}&body=${encodeURIComponent(body)}`;
   };
 

@@ -1,18 +1,42 @@
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import type { Product, CartItem } from '@shared/schema';
+// client/src/lib/cart.ts
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import type { Product } from "@shared/schema";
+
+type UICartItem = {
+  /** Unique line id for this cart entry */
+  id: string;
+  /** Product reference */
+  product: Product;
+  /** Product id (duplicated for convenience) */
+  productId: string;
+  /** Price snapshot at time of add (number) */
+  priceEach: number;
+  /** How many of this product are in the cart */
+  quantity: number;
+  /** ISO string */
+  createdAt: string;
+};
 
 interface CartState {
-  items: CartItem[];
+  items: UICartItem[];
   isOpen: boolean;
+
   addItem: (product: Product, quantity?: number) => void;
-  removeItem: (id: string) => void;
-  updateQuantity: (id: string, quantity: number) => void;
+  removeItem: (lineId: string) => void;
+  updateQuantity: (lineId: string, quantity: number) => void;
   clearCart: () => void;
+
   openCart: () => void;
   closeCart: () => void;
+
   getTotalItems: () => number;
   getTotalPrice: () => number;
+}
+
+function toNumber(n: unknown): number {
+  const v = typeof n === "number" ? n : parseFloat(String(n ?? "0"));
+  return Number.isFinite(v) ? v : 0;
 }
 
 export const useCartStore = create<CartState>()(
@@ -21,73 +45,69 @@ export const useCartStore = create<CartState>()(
       items: [],
       isOpen: false,
 
-      addItem: (product: Product, quantity = 1) => {
-        const { items } = get();
-        const existingItem = items.find(item => item.productId === product.id);
+      addItem: (product, qty = 1) => {
+        const quantity = Math.max(1, Math.floor(qty));
+        const productId = String(product.id);
+        const priceEach = toNumber((product as any)?.price);
 
-        if (existingItem) {
-          set({
-            items: items.map(item =>
-              item.productId === product.id
-                ? { ...item, quantity: item.quantity + quantity }
-                : item
-            ),
-          });
-        } else {
-          const newItem: CartItem = {
-            id: `cart-${Date.now()}`,
-            userId: '', // Will be set when user logs in
-            productId: product.id,
-            quantity,
-            createdAt: new Date(),
+        set((state) => {
+          const existing = state.items.find((i) => i.productId === productId);
+          if (existing) {
+            // Increment quantity on the existing line
+            return {
+              isOpen: true,
+              items: state.items.map((i) =>
+                i.id === existing.id
+                  ? { ...i, quantity: i.quantity + quantity }
+                  : i,
+              ),
+            };
+          }
+
+          // Create a new line
+          const line: UICartItem = {
+            id: `line-${Date.now()}-${productId}`,
+            product,
+            productId,
+            priceEach,
+            quantity: quantity,
+            createdAt: new Date().toISOString(),
           };
-          set({ items: [...items, newItem] });
-        }
-      },
 
-      removeItem: (id: string) => {
-        set({
-          items: get().items.filter(item => item.id !== id),
+          return { isOpen: true, items: [...state.items, line] };
         });
       },
 
-      updateQuantity: (id: string, quantity: number) => {
-        if (quantity <= 0) {
-          get().removeItem(id);
+      removeItem: (lineId) => {
+        set((state) => ({ items: state.items.filter((i) => i.id !== lineId) }));
+      },
+
+      updateQuantity: (lineId, quantity) => {
+        const q = Math.floor(quantity);
+        if (q <= 0) {
+          // Remove when set to 0 or less
+          set((state) => ({ items: state.items.filter((i) => i.id !== lineId) }));
           return;
         }
-
-        set({
-          items: get().items.map(item =>
-            item.id === id ? { ...item, quantity } : item
-          ),
-        });
+        set((state) => ({
+          items: state.items.map((i) => (i.id === lineId ? { ...i, quantity: q } : i)),
+        }));
       },
 
-      clearCart: () => {
-        set({ items: [] });
-      },
+      clearCart: () => set({ items: [] }),
 
-      openCart: () => {
-        set({ isOpen: true });
-      },
+      openCart: () => set({ isOpen: true }),
+      closeCart: () => set({ isOpen: false }),
 
-      closeCart: () => {
-        set({ isOpen: false });
-      },
+      getTotalItems: () => get().items.reduce((sum, i) => sum + i.quantity, 0),
 
-      getTotalItems: () => {
-        return get().items.reduce((total, item) => total + item.quantity, 0);
-      },
-
-      getTotalPrice: () => {
-        // This would need product price data to calculate properly
-        // For now, returning 0 as placeholder
-        return 0;
-      },
+      getTotalPrice: () =>
+        get().items.reduce((sum, i) => sum + i.priceEach * i.quantity, 0),
     }),
     {
-      name: 'cart-storage',
-    }
-  )
+      /** New storage key so we don't have to migrate older shapes */
+      name: "cart-storage-v2",
+      // You can add version & migrate later if you need to evolve the shape
+    },
+  ),
 );
